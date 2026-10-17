@@ -91,6 +91,7 @@ npm run test:api     # in a second terminal
 
 | Artefact | Location |
 | --- | --- |
+| GitHub repository | https://github.com/BhaveshSab/VendorBridge-kagnus (branch `main`) |
 | Source code | `src/` (front end), `server/` (API), `prisma/` (schema + migrations), `scripts/` (tests, screenshots) |
 | Setup and configuration | [README.md](../README.md) §1–§3 |
 | Demo accounts | [README.md](../README.md) §3 |

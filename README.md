@@ -312,17 +312,21 @@ and short motion that respects `prefers-reduced-motion`.
 | README with setup, configuration, run instructions | ✅ this file |
 | Screenshots of authentication, dashboard and vendor management | ✅ 9 screens in `docs/screenshots/` |
 | Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) |
-| Working source code pushed to the assigned GitHub repository | ⚠️ not done — the workspace has no Git repository yet; see below |
+| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `main` |
 | PostgreSQL + Prisma ORM instead of a local database file | ✅ migrated, 64/64 API checks pass against PostgreSQL |
 
-### Publishing the repository
+### Getting the code
 
 ```bash
-git init
-git add .
-git commit -m "VendorBridge Week 1: auth, dashboard, vendor management"
-git remote add origin <your-repository-url>
-git push -u origin main
+git clone https://github.com/BhaveshSab/VendorBridge-kagnus.git
+cd VendorBridge-kagnus
+
+npm install                 # installs dependencies and generates the Prisma Client
+cp .env.example .env        # set DATABASE_URL (PostgreSQL) and JWT_SECRET
+
+npm run db:deploy           # apply the committed Prisma migrations
+npm run seed                # load demo users and vendors
+npm run dev                 # API on :4000, Vite on :5173
 ```
 
 `.env`, `node_modules/`, `dist/` and the local `server.log` / `server.pid` are ignored, so no
