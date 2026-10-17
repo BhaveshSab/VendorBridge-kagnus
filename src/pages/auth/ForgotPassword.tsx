@@ -7,9 +7,6 @@ import { api, ApiError, errorMessage } from "../../lib/api";
 
 interface ForgotResponse {
   message: string;
-  resetToken?: string;
-  resetUrl?: string;
-  expiresInMinutes?: number;
 }
 
 export default function ForgotPassword() {
@@ -53,20 +50,10 @@ export default function ForgotPassword() {
           </span>
           <h2 className="mt-3 text-[15px] font-semibold text-ink">Check your inbox</h2>
           <p className="mt-1 text-[12px] leading-relaxed text-muted">{result.message}</p>
-
-          {result.resetUrl ? (
-            <div className="mt-4 border border-brand-200 bg-brand-50 p-3">
-              <p className="text-[11px] font-semibold text-brand-800">Local demo mode</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-brand-800/90">
-                No mail transport is configured for this assignment build, so the reset link is shown here.
-                In production this would be delivered by email.
-              </p>
-              <Link to={result.resetUrl} className="btn btn-primary btn-sm mt-3">
-                Continue to reset password
-                <ArrowRight size={13} />
-              </Link>
-            </div>
-          ) : null}
+          <p className="mt-3 text-[11px] leading-relaxed text-muted">
+            The reset link expires after 30 minutes and can only be used once. If you don't see the
+            email, check your spam folder or request a new link.
+          </p>
 
           <Link to="/login" className="link mt-4 inline-flex items-center gap-1 text-[12px]">
             <ArrowLeft size={12} />

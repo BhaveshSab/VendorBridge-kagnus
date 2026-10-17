@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { Permissions, Session, User, Vendor } from "../lib/types";
@@ -32,6 +33,7 @@ const AuthContext = createContext<AuthValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const refresh = useCallback(async () => {
     try {
@@ -62,21 +64,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const next = await api.post<Session>("/auth/login", { email, password });
+    // Drop any cached server state from a previous (or anonymous) session.
+    queryClient.clear();
     setSession(next);
-  }, []);
+  }, [queryClient]);
 
   const register = useCallback(async (payload: RegisterPayload) => {
     const next = await api.post<Session>("/auth/register", payload);
+    queryClient.clear();
     setSession(next);
-  }, []);
+  }, [queryClient]);
 
   const logout = useCallback(async () => {
     try {
       await api.post("/auth/logout");
     } finally {
+      queryClient.clear();
       setSession(null);
     }
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo<AuthValue>(
     () => ({

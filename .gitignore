@@ -3,6 +3,7 @@ dist/
 *.tsbuildinfo
 server.log
 server.pid
+.mail-outbox.jsonl
 .env
 .env.local
 *.log

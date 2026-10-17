@@ -4,6 +4,7 @@ import { useToast } from "../context/ToastContext";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { COUNTRIES, VENDOR_CATEGORIES } from "../lib/constants";
 import type { Vendor } from "../lib/types";
+import { useApiMutation } from "../lib/useApi";
 import { Button, Field, Input, Modal, Select, Textarea } from "./ui";
 
 interface VendorForm {
@@ -36,6 +37,21 @@ const emptyForm: VendorForm = {
   notes: "",
 };
 
+interface VendorPayload {
+  name: string;
+  category: string;
+  gstin: string;
+  email: string;
+  phone: string;
+  contactName: string;
+  address: string;
+  city: string;
+  country: string;
+  status: Vendor["status"];
+  rating: number;
+  notes: string;
+}
+
 export function VendorFormModal({
   open,
   vendor,
@@ -47,13 +63,20 @@ export function VendorFormModal({
   vendor: Vendor | null;
   categories: string[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved?: () => void;
 }) {
   const toast = useToast();
   const [form, setForm] = useState<VendorForm>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Saving refreshes every cached read under "/vendors" (list, meta, detail).
+  const saveVendor = useApiMutation(
+    (payload: VendorPayload) =>
+      vendor ? api.put(`/vendors/${vendor.id}`, payload) : api.post("/vendors", payload),
+    { invalidate: ["/vendors"] },
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -104,7 +127,7 @@ export function VendorFormModal({
     if (!validate()) return;
     setSaving(true);
     try {
-      const payload = {
+      const payload: VendorPayload = {
         name: form.name.trim(),
         category: form.category,
         gstin: form.gstin.trim().toUpperCase(),
@@ -118,14 +141,13 @@ export function VendorFormModal({
         rating: Number(form.rating),
         notes: form.notes.trim(),
       };
+      await saveVendor.mutateAsync(payload);
       if (vendor) {
-        await api.put(`/vendors/${vendor.id}`, payload);
         toast.success("Vendor updated", `${payload.name} has been saved.`);
       } else {
-        await api.post("/vendors", payload);
         toast.success("Vendor added", `${payload.name} is now in the register.`);
       }
-      onSaved();
+      onSaved?.();
       onClose();
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);

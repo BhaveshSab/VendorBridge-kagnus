@@ -16,28 +16,33 @@ import {
   verifyPassword,
 } from "../auth.js";
 import { displayName, nextSequence, now, prisma, publicUser } from "../db.js";
+import { sendPasswordResetEmail } from "../email.js";
+import { createAuthLimiter } from "../rateLimit.js";
 import { PERMISSIONS, roleLabel, vendorOut } from "../serializers.js";
 
 const router = Router();
 
-const attemptedLogins = new Map();
-const MAX_ATTEMPTS = 10;
-const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+// Persistent rate limiting (Redis when REDIS_URL is set, otherwise the
+// database) instead of an in-memory Map — counters survive restarts and are
+// shared across Node.js instances.
+const loginLimiter = await createAuthLimiter({
+  limit: 10,
+  windowMs: 15 * 60 * 1000,
+  prefix: "vb:rl:login:",
+});
 
-function throttle(key) {
-  const entry = attemptedLogins.get(key);
-  const current = Date.now();
-  if (!entry || current - entry.first > ATTEMPT_WINDOW_MS) {
-    attemptedLogins.set(key, { first: current, count: 1 });
-    return;
-  }
-  entry.count += 1;
-  if (entry.count > MAX_ATTEMPTS) {
-    throw new ApiError(429, "Too many sign-in attempts. Please wait a few minutes and try again.", {
+const forgotPasswordLimiter = await createAuthLimiter({
+  limit: 5,
+  windowMs: 15 * 60 * 1000,
+  prefix: "vb:rl:forgot:",
+  skipSuccessfulRequests: false,
+  message: {
+    error: {
+      message: "Too many password reset requests. Please wait a few minutes and try again.",
       code: "rate_limited",
-    });
-  }
-}
+    },
+  },
+});
 
 const registerSchema = z.object({
   firstName: z.string().trim().min(2, "Enter your first name."),
@@ -129,14 +134,12 @@ const loginSchema = z.object({
   password: z.string().min(1, "Enter your password."),
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   const data = parse(loginSchema, req.body);
-  throttle(`${req.ip}:${data.email}`);
   const user = await prisma.user.findUnique({ where: { email: data.email } });
   if (!user || !verifyPassword(data.password, user.passwordHash)) {
     throw new ApiError(401, "Incorrect email or password.", { code: "invalid_credentials" });
   }
-  attemptedLogins.delete(`${req.ip}:${data.email}`);
   const token = signToken(user);
   setSessionCookie(res, token);
   res.json({ token, expiresIn: COOKIE_MAX_AGE, ...(await sessionPayload(user)) });
@@ -159,7 +162,7 @@ router.get("/me", requireAuth, async (req, res) => {
 
 const forgotSchema = z.object({ email: emailSchema });
 
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   const { email } = parse(forgotSchema, req.body);
   const user = await prisma.user.findUnique({ where: { email } });
   const generic = {
@@ -182,12 +185,19 @@ router.post("/forgot-password", async (req, res) => {
       },
     }),
   ]);
-  res.json({
-    ...generic,
-    resetToken: token,
-    resetUrl: `/reset-password?token=${token}`,
-    expiresInMinutes: 30,
-  });
+
+  // Deliver the reset link by email (Resend in production, local mail outbox
+  // during development). The token is never returned in the response body.
+  const appUrl = (process.env.CLIENT_ORIGIN || "http://localhost:5173").split(",")[0].trim();
+  const resetUrl = `${appUrl}/reset-password?token=${token}`;
+  try {
+    await sendPasswordResetEmail({ to: user.email, name: displayName(user), resetUrl });
+  } catch (error) {
+    // Never leak delivery state (or the token) through the API — log and keep
+    // the response indistinguishable from the unknown-email case.
+    console.error("[api] failed to dispatch password reset email", error);
+  }
+  res.json(generic);
 });
 
 const resetSchema = z.object({
