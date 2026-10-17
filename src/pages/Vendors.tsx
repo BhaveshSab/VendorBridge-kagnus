@@ -34,7 +34,7 @@ import { useToast } from "../context/ToastContext";
 import { api, errorMessage } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { Vendor } from "../lib/types";
-import { useApi } from "../lib/useApi";
+import { useApi, useApiMutation } from "../lib/useApi";
 import { useDebounced } from "../lib/useDebounced";
 
 interface VendorListResponse {
@@ -104,15 +104,18 @@ export default function Vendors() {
   const counts = list.data?.statusCounts;
   const canManage = Boolean(permissions?.manageVendors);
 
+  // Deleting refreshes every cached read under "/vendors" (list, meta, detail).
+  const deleteVendor = useApiMutation((target: Vendor) => api.del(`/vendors/${target.id}`), {
+    invalidate: ["/vendors"],
+  });
+
   async function handleDelete() {
     if (!deleting) return;
     setDeleteLoading(true);
     try {
-      await api.del(`/vendors/${deleting.id}`);
+      await deleteVendor.mutateAsync(deleting);
       toast.success("Vendor deleted", `${deleting.name} was removed from the register.`);
       setDeleting(null);
-      list.refetch();
-      meta.refetch();
     } catch (error) {
       toast.error("Unable to delete vendor", errorMessage(error));
       setDeleting(null);
@@ -437,10 +440,6 @@ export default function Vendors() {
         vendor={editing}
         categories={categories}
         onClose={() => setFormOpen(false)}
-        onSaved={() => {
-          list.refetch();
-          meta.refetch();
-        }}
       />
 
       <Modal

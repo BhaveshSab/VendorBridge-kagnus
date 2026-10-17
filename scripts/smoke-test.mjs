@@ -1,4 +1,9 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 const BASE = process.env.API_URL || "http://localhost:4000";
+const OUTBOX_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.mail-outbox.jsonl");
 
 let passed = 0;
 let failed = 0;
@@ -52,6 +57,27 @@ async function login(email, password) {
   const call = client();
   const result = await call("POST", "/auth/login", { email, password });
   return { call, result };
+}
+
+// Reset links are delivered by email (the local dev fallback writes them to
+// the mail outbox) and are never returned in API responses.
+function readLatestResetToken(email) {
+  try {
+    const entries = fs
+      .readFileSync(OUTBOX_PATH, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    for (let index = entries.length - 1; index >= 0; index -= 1) {
+      const entry = entries[index];
+      if (entry.to !== email || !entry.resetUrl) continue;
+      const token = new URL(entry.resetUrl).searchParams.get("token");
+      if (token) return token;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 const stamp = Date.now();
@@ -256,8 +282,16 @@ async function main() {
   check("duplicate email registration is rejected with 409", duplicateEmail.status === 409);
 
   const resetRequest = await client()("POST", "/auth/forgot-password", { email: "admin@vendorbridge.dev" });
-  check("forgot-password issues a reset token", Boolean(resetRequest.body?.resetToken));
-  const token = resetRequest.body?.resetToken;
+  check(
+    "forgot-password returns a generic acknowledgement",
+    resetRequest.status === 200 && Boolean(resetRequest.body?.message),
+  );
+  check(
+    "forgot-password keeps the reset token out of the response body",
+    resetRequest.body?.resetToken === undefined && resetRequest.body?.resetUrl === undefined,
+  );
+  const token = readLatestResetToken("admin@vendorbridge.dev");
+  check("reset link is delivered to the email transport (dev outbox)", Boolean(token));
 
   const badToken = await client()("POST", "/auth/reset-password", { token: "not-a-real-token-value", password: "Admin@2026" });
   check("invalid reset token is rejected with 400", badToken.status === 400);
@@ -271,7 +305,7 @@ async function main() {
 
   const restoreRequest = await client()("POST", "/auth/forgot-password", { email: "admin@vendorbridge.dev" });
   const restore = await client()("POST", "/auth/reset-password", {
-    token: restoreRequest.body?.resetToken,
+    token: restoreRequest.status === 200 ? readLatestResetToken("admin@vendorbridge.dev") : null,
     password: "Admin@123",
   });
   check("demo admin password restored", restore.status === 200);

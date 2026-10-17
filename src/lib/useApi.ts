@@ -1,47 +1,95 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { ApiError, api, type Query } from "./api";
 
-interface State<T> {
-  data: T | null;
-  error: ApiError | null;
-  loading: boolean;
+function toApiError(error: unknown): ApiError {
+  return error instanceof ApiError
+    ? error
+    : new ApiError(0, "Unable to complete this request.", "unknown");
 }
 
+/**
+ * Query keys are `[apiPath, query]`, so caches are keyed by resource path and
+ * can be invalidated by path prefix (e.g. everything under "/vendors").
+ */
+export function apiQueryKey(path: string | null, query?: Query) {
+  return [path, query ?? {}] as const;
+}
+
+/** Invalidate every cached query whose API path starts with one of `prefixes`. */
+export function invalidateApiPaths(queryClient: QueryClient, ...prefixes: string[]) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => {
+      const root = query.queryKey[0];
+      return typeof root === "string" && prefixes.some((prefix) => root.startsWith(prefix));
+    },
+  });
+}
+
+/**
+ * Reads an API endpoint through TanStack Query: cached data, background
+ * re-fetching, and race-free cancellation out of the box.
+ */
 export function useApi<T>(path: string | null, query?: Query) {
-  const [state, setState] = useState<State<T>>({ data: null, error: null, loading: Boolean(path) });
-  const [version, setVersion] = useState(0);
-  const queryKey = JSON.stringify(query ?? {});
-  const mounted = useRef(true);
+  const queryClient = useQueryClient();
+  const queryKey = apiQueryKey(path, query);
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  const { data, error, isLoading, refetch } = useQuery<T>({
+    queryKey,
+    enabled: Boolean(path),
+    queryFn: ({ signal }) => api.get<T>(path as string, query, signal),
+  });
 
-  useEffect(() => {
-    if (!path) {
-      setState({ data: null, error: null, loading: false });
-      return;
-    }
-    const controller = new AbortController();
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    api
-      .get<T>(path, query, controller.signal)
-      .then((data) => {
-        if (!controller.signal.aborted) setState({ data, error: null, loading: false });
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        const apiError =
-          error instanceof ApiError ? error : new ApiError(0, "Unable to load this data.", "unknown");
-        setState({ data: null, error: apiError, loading: false });
-      });
-    return () => controller.abort();
-  }, [path, queryKey, version]);
+  const refetchNow = useCallback(() => {
+    void refetch();
+  }, [refetch]);
 
-  const refetch = useCallback(() => setVersion((value) => value + 1), []);
+  const setData = useCallback(
+    (next: T | null) => {
+      queryClient.setQueryData<T | null>(queryKey, next);
+    },
+    [queryClient, queryKey],
+  );
 
-  return { ...state, refetch, setData: (data: T | null) => setState((prev) => ({ ...prev, data })) };
+  const apiError = error ? toApiError(error) : null;
+
+  return {
+    data: data ?? null,
+    // Surface fetch errors only when there is no data to show, so a failed
+    // background re-fetch never blanks out an already-rendered page.
+    error: data === undefined ? apiError : null,
+    loading: isLoading,
+    refetch: refetchNow,
+    setData,
+  };
+}
+
+interface ApiMutationOptions<TData, TVariables> {
+  /** API path prefixes (e.g. "/vendors") whose cached queries refresh on success. */
+  invalidate?: string[];
+  onSuccess?: (data: TData, variables: TVariables) => void;
+  onError?: (error: ApiError, variables: TVariables) => void;
+}
+
+/**
+ * Runs a write through TanStack Query, invalidating the cached reads under the
+ * given API path prefixes on success (mutation invalidation).
+ */
+export function useApiMutation<TData = unknown, TVariables = void>(
+  mutationFn: (variables: TVariables) => Promise<TData>,
+  options: ApiMutationOptions<TData, TVariables> = {},
+) {
+  const queryClient = useQueryClient();
+  const { invalidate = [], onSuccess, onError } = options;
+
+  return useMutation<TData, ApiError, TVariables>({
+    mutationFn,
+    onSuccess: (data, variables) => {
+      if (invalidate.length > 0) void invalidateApiPaths(queryClient, ...invalidate);
+      onSuccess?.(data, variables);
+    },
+    onError: (error, variables) => {
+      onError?.(toApiError(error), variables);
+    },
+  });
 }

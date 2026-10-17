@@ -77,13 +77,13 @@ npm run test:api     # in a second terminal
 
 ## 3. Known limitations
 
-- **Email delivery** — no SMTP provider is configured; reset links are returned by the API and shown in the UI, labelled as local demo mode.
+- **Email delivery** — password-reset links are dispatched through Resend when `RESEND_API_KEY` is configured; without a provider, development runs write the message to a local mail outbox (`.mail-outbox.jsonl`). Reset tokens are never returned in API responses.
 - **Role selection at sign-up** — public registration lets a user choose Procurement/Approver/Vendor; there is no admin verification step in Week 1.
 - **Weeks 2–4** — procurement workflow, document generation, reports and audit trail are intentionally not built.
 - **Database hosting** — PostgreSQL must be reachable at `DATABASE_URL`; there is no embedded or offline fallback. The schema is versioned in `prisma/migrations/` and applied with `npm run db:deploy`.
 - **Automated UI tests** — none; UI verification is a browser walkthrough plus the API suite.
 - **Deployment** — no hosted URL; the app runs locally with `npm run dev` or `npm start`.
-- **Bundle size** — ~481 kB (148 kB gzipped) in a single chunk; route-level code splitting is the next step.
+- **Bundle size** — route-level code splitting (`React.lazy` + `<Suspense>`) builds one chunk per page, so each route loads only its own code.
 
 ---
 

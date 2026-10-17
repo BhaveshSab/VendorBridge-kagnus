@@ -13,8 +13,8 @@ implemented; their areas on the dashboard show explicit "available in Week 2/3/4
 
 | Layer | Choice |
 | --- | --- |
-| Front end | React 19, TypeScript, Vite 7, Tailwind CSS 4, React Router 7, Framer Motion, Lucide icons |
-| Back end | Node.js (ESM), Express 5, Zod validation |
+| Front end | React 19, TypeScript, Vite 7, Tailwind CSS 4, React Router 7 (lazy-loaded routes), TanStack Query, Framer Motion, Lucide icons |
+| Back end | Node.js (ESM), Express 5, Zod validation, express-rate-limit, Resend email API |
 | Auth | bcrypt password hashing + signed JWT in an httpOnly cookie |
 | Database | PostgreSQL (managed instance) through Prisma ORM 6, schema in `prisma/schema.prisma` |
 
@@ -85,8 +85,12 @@ The sign-in screen lists these accounts as clickable shortcuts (one click prefil
   is never orphaned.
 - Email + password login, logout, and session restore via a signed JWT in an httpOnly cookie
   (8 hour expiry, `sameSite=lax`, `secure` in production).
-- Forgot-password → single-use, 30-minute reset token → password reset.
-- Login throttling: 10 attempts per IP + email within 15 minutes returns `429`.
+- Forgot-password → single-use, 30-minute reset token → password reset. The reset link is
+  delivered by email (Resend when `RESEND_API_KEY` is configured, otherwise a local mail outbox);
+  the token is never included in API responses.
+- Login throttling: 10 attempts per IP + email within 15 minutes returns `429`. Counters are
+  stored in Redis (when `REDIS_URL` is set) or PostgreSQL via `express-rate-limit`, so they
+  survive restarts and work across multiple Node.js instances.
 - Four roles: **Admin, Procurement Officer, Manager/Approver, Vendor**.
 - Every API route is guarded server-side (`requireAuth` / `requireRole`). Role restrictions are
   enforced on the backend, not just hidden in the UI.
@@ -123,7 +127,8 @@ The sign-in screen lists these accounts as clickable shortcuts (one click prefil
 
 - Approved stack, single repository, `src/` (front end) and `server/` (API + database) separated.
 - Configuration through environment variables (`PORT`, `JWT_SECRET`, `JWT_EXPIRES_IN`,
-  `DATABASE_URL`, `CLIENT_ORIGIN`, `NODE_ENV`); no secrets in front-end code.
+  `DATABASE_URL`, `CLIENT_ORIGIN`, `NODE_ENV`, plus optional `REDIS_URL`, `RESEND_API_KEY` and
+  `EMAIL_FROM`); no secrets in front-end code.
 - Reusable UI components (buttons, fields, cards, modal, table, badges, skeleton, empty and
   error states) and consistent API error handling on both sides.
 - Security headers, a CORS allow-list, `x-powered-by` disabled, parameterised Prisma queries and
@@ -279,8 +284,10 @@ and short motion that respects `prefers-reduced-motion`.
 
 ## 10. Known limitations (documented honestly)
 
-- **Email delivery**: no SMTP provider is configured, so password-reset links are returned by the
-  API and displayed in the UI for local/demo use. The token, expiry and single-use logic are real.
+- **Email delivery**: password-reset links are dispatched through Resend when `RESEND_API_KEY` is
+  set (sender configurable via `EMAIL_FROM`). Without a provider configured, development runs
+  write the message to a local mail outbox (`.mail-outbox.jsonl`). Reset tokens are never returned
+  in API responses; the expiry and single-use logic are real.
 - **Role selection at sign-up**: public registration lets a user pick Procurement/Approver/Vendor;
   there is no admin approval or email verification step in Week 1.
 - **Weeks 2–4 are not implemented**: RFQs, quotations, approvals, purchase orders, invoices,
@@ -291,8 +298,8 @@ and short motion that respects `prefers-reduced-motion`.
   in `.env`, so it must be provisioned before the app can start.
 - **Automated UI tests**: none yet — verification is the API smoke suite plus a browser walkthrough.
 - **Deployment**: no hosted URL; run locally with `npm run dev` or `npm start`.
-- **Bundle size**: the production JS bundle is ~481 kB (148 kB gzipped); route-level code
-  splitting is a sensible next step.
+- **Bundle size**: route-level code splitting (`React.lazy` + `<Suspense>`) builds one chunk per
+  page, so users only download the code for the route they visit.
 
 ---
 
@@ -301,7 +308,7 @@ and short motion that respects `prefers-reduced-motion`.
 | Requirement | Status |
 | --- | --- |
 | Registration, login, logout, session handling | ✅ implemented & tested |
-| Forgot-password / reset flow | ✅ functional (link surfaced in-app, no mailer) |
+| Forgot-password / reset flow | ✅ functional (link emailed via Resend; dev outbox fallback) |
 | Protected pages and protected backend endpoints | ✅ server-enforced |
 | Four roles with role-based authorization on the backend | ✅ verified by tests |
 | Dashboard layout, summary cards, quick actions, empty states | ✅ |
