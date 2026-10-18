@@ -8,8 +8,10 @@ import { projectRoot } from "./db.js";
 import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import vendorRoutes from "./routes/vendors.js";
+import { ensureDatabase } from "./ensureDb.js";
 import { seed } from "./seed.js";
 
+await ensureDatabase();
 await seed();
 
 const app = express();

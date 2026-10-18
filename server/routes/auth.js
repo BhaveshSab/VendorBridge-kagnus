@@ -32,7 +32,9 @@ const loginLimiter = await createAuthLimiter({
 });
 
 const forgotPasswordLimiter = await createAuthLimiter({
-  limit: 5,
+  // Allow 50 attempts in development so testing never hits the ceiling.
+  // In production a real environment variable will override NODE_ENV.
+  limit: process.env.NODE_ENV === "production" ? 5 : 50,
   windowMs: 15 * 60 * 1000,
   prefix: "vb:rl:forgot:",
   skipSuccessfulRequests: false,
@@ -198,6 +200,34 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
     console.error("[api] failed to dispatch password reset email", error);
   }
   res.json(generic);
+});
+
+// Development helper: enables browser users to receive/click the reset link
+// without requiring an active third-party transactional email service.
+router.get("/dev-reset-link", async (req, res) => {
+  const email = String(req.query.email || "").trim().toLowerCase();
+  if (!email) {
+    return res.status(400).json({ error: "Email query param is required." });
+  }
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  const record = await prisma.passwordReset.findFirst({
+    where: {
+      userId: user.id,
+      used: 0,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!record) {
+    return res.status(404).json({ error: "No active reset token for this user." });
+  }
+
+  const appUrl = (process.env.CLIENT_ORIGIN || "http://localhost:5173").split(",")[0].trim();
+  const resetUrl = `${appUrl}/reset-password?token=${record.token}`;
+  res.json({ token: record.token, resetUrl, email: user.email });
 });
 
 const resetSchema = z.object({

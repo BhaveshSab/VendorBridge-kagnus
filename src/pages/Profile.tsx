@@ -19,104 +19,107 @@ export default function Profile() {
     <Page>
       <div className="page-shell">
         <PageHeader
-          eyebrow="Account"
+          eyebrow="My Account"
           title="Profile & security"
-          description="Your account details and the permissions enforced by the API."
+          description="Your user credentials, role permissions and session security parameters."
         />
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-4">
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Card className="lg:col-span-2 overflow-hidden">
+            <div className="flex flex-wrap items-center gap-4 border-b border-line bg-gradient-to-r from-blue-50/40 to-white px-6 py-5">
               <Avatar name={user?.name ?? "VendorBridge"} size="lg" />
               <div className="min-w-0 flex-1">
-                <h2 className="text-[15px] font-semibold text-ink">{user?.name}</h2>
-                <p className="text-[11px] text-muted">{roleLabel}</p>
+                <h2 className="text-[17px] font-bold text-ink">{user?.name}</h2>
+                <p className="text-[12px] font-medium text-muted">{user?.email}</p>
               </div>
               <span className="badge badge-open">{roleLabel}</span>
             </div>
-            <dl className="grid gap-4 px-4 py-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">Email</dt>
-                <dd className="mt-1 flex items-center gap-1.5 text-[12px] text-ink">
-                  <Mail size={12} className="text-muted" />
+            <dl className="grid gap-5 px-6 py-6 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200/80 p-3.5 bg-slate-50/40">
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Email address</dt>
+                <dd className="mt-1 flex items-center gap-1.5 text-[13px] font-bold text-ink">
+                  <Mail size={13} className="text-slate-400" />
                   {user?.email}
                 </dd>
               </div>
-              <div>
-                <dt className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">Phone</dt>
-                <dd className="mt-1 flex items-center gap-1.5 text-[12px] text-ink">
-                  <Phone size={12} className="text-muted" />
+              <div className="rounded-xl border border-slate-200/80 p-3.5 bg-slate-50/40">
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Phone contact</dt>
+                <dd className="mt-1 flex items-center gap-1.5 text-[13px] font-bold text-ink">
+                  <Phone size={13} className="text-slate-400" />
                   {user?.phone || "Not provided"}
                 </dd>
               </div>
-              <div>
-                <dt className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">Country</dt>
-                <dd className="mt-1 flex items-center gap-1.5 text-[12px] text-ink">
-                  <MapPin size={12} className="text-muted" />
+              <div className="rounded-xl border border-slate-200/80 p-3.5 bg-slate-50/40">
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Country / region</dt>
+                <dd className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                  <MapPin size={13} className="text-slate-400" />
                   {user?.country || "—"}
                 </dd>
               </div>
-              <div>
-                <dt className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">Member since</dt>
-                <dd className="mt-1 text-[12px] text-ink">{formatDate(user?.createdAt)}</dd>
+              <div className="rounded-xl border border-slate-200/80 p-3.5 bg-slate-50/40">
+                <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Member since</dt>
+                <dd className="mt-1 text-[13px] font-semibold text-ink">{formatDate(user?.createdAt)}</dd>
               </div>
               {user?.additionalInfo ? (
-                <div className="sm:col-span-2">
-                  <dt className="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
-                    Additional information
+                <div className="sm:col-span-2 rounded-xl border border-slate-200/80 p-3.5 bg-slate-50/40">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">
+                    Additional company details
                   </dt>
-                  <dd className="mt-1 text-[12px] text-ink-soft">{user.additionalInfo}</dd>
+                  <dd className="mt-1 text-[13px] text-ink-soft leading-relaxed">{user.additionalInfo}</dd>
                 </div>
               ) : null}
             </dl>
           </Card>
 
-          <Card className="p-4">
-            <h2 className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-              <ShieldCheck size={14} className="text-brand-600" />
-              Access
-            </h2>
-            <ul className="mt-3 space-y-2">
-              {PERMISSION_LABELS.map((permission) => {
-                const allowed = Boolean(permissions?.[permission.key]);
-                return (
-                  <li key={permission.key} className="flex items-start gap-2 text-[11px]">
-                    <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-chip ${
-                        allowed ? "bg-success-soft text-success" : "bg-neutral-soft text-muted"
-                      }`}
-                    >
-                      {allowed ? <Check size={10} /> : <Minus size={10} />}
-                    </span>
-                    <span className={allowed ? "text-ink-soft" : "text-muted"}>{permission.label}</span>
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="mt-3 border-t border-line pt-3 text-[10px] leading-relaxed text-muted">
-              Permissions are enforced by the API, not just hidden in the interface.
+          <Card className="p-5 flex flex-col justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-[14px] font-bold text-ink">
+                <ShieldCheck size={16} className="text-brand-600" />
+                Access Permissions
+              </h2>
+              <ul className="mt-3.5 space-y-2.5">
+                {PERMISSION_LABELS.map((permission) => {
+                  const allowed = Boolean(permissions?.[permission.key]);
+                  return (
+                    <li key={permission.key} className="flex items-start gap-2.5 text-[12px] p-2 rounded-lg bg-slate-50 border border-slate-100">
+                      <span
+                        className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
+                          allowed ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"
+                        }`}
+                      >
+                        {allowed ? <Check size={11} /> : <Minus size={11} />}
+                      </span>
+                      <span className={allowed ? "font-semibold text-ink" : "text-muted"}>{permission.label}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <p className="mt-4 border-t border-line pt-3.5 text-[11px] leading-relaxed text-muted">
+              Role permissions are strictly verified server-side on every API call.
             </p>
           </Card>
 
           {vendor ? (
-            <Card className="p-4 lg:col-span-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-                  <Building2 size={14} className="text-brand-600" />
-                  Vendor record
+            <Card className="p-5 lg:col-span-2 overflow-hidden border-blue-100 bg-gradient-to-r from-blue-50/30 to-white">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+                <h2 className="flex items-center gap-2 text-[14px] font-bold text-ink">
+                  <Building2 size={16} className="text-brand-600" />
+                  Linked Vendor Record
                 </h2>
-                <Link to="/vendors" className="link text-[11px]">
-                  Open vendor profile
+                <Link to="/vendors" className="link text-[12px] font-bold">
+                  Open full profile →
                 </Link>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-card bg-brand-50 text-[13px] font-bold text-brand-700">
+              <div className="mt-4 flex flex-wrap items-center gap-3.5">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-[14px] font-bold text-white shadow-xs">
                   {vendor.name.slice(0, 2).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-semibold text-ink">{vendor.name}</p>
-                  <p className="text-[11px] text-muted">
-                    {vendor.code} · {vendor.category} · {vendor.city || vendor.country || "—"}
+                  <p className="text-[14px] font-bold text-ink">{vendor.name}</p>
+                  <p className="text-[12px] text-muted">
+                    <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-semibold text-slate-700 mr-1.5">{vendor.code}</span>
+                    {vendor.category} · {vendor.city || vendor.country || "—"}
                   </p>
                 </div>
                 <Badge status={vendor.status} />
@@ -124,23 +127,22 @@ export default function Profile() {
             </Card>
           ) : null}
 
-          <Card className="p-4">
-            <h2 className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-              <KeyRound size={14} className="text-brand-600" />
-              Security
+          <Card className="p-5">
+            <h2 className="flex items-center gap-2 text-[14px] font-bold text-ink">
+              <KeyRound size={16} className="text-brand-600" />
+              Security &amp; Session
             </h2>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted">
-              Sessions are signed JWTs stored in an httpOnly cookie and expire after 8 hours. Passwords are hashed
-              with bcrypt and never returned to the browser.
+            <p className="mt-2 text-[12px] leading-relaxed text-muted">
+              Sessions are signed JWTs in an httpOnly cookie with 8-hour lifetime.
             </p>
-            <div className="mt-3 space-y-2">
-              <Link to="/forgot-password" className="btn btn-ghost btn-sm w-full">
-                Change password
+            <div className="mt-4 space-y-2.5">
+              <Link to="/forgot-password" className="btn btn-ghost btn-sm w-full justify-center">
+                Reset password
               </Link>
               <Button
                 variant="danger-ghost"
                 size="sm"
-                className="w-full"
+                className="w-full justify-center"
                 icon={<LogOut size={13} />}
                 onClick={async () => {
                   await logout();
@@ -151,8 +153,8 @@ export default function Profile() {
                 Sign out
               </Button>
             </div>
-            <p className="mt-3 flex items-center gap-1.5 border-t border-line pt-3 text-[10px] text-muted">
-              <UserRound size={11} />
+            <p className="mt-4 flex items-center gap-1.5 border-t border-line pt-3.5 text-[11px] text-muted">
+              <UserRound size={12} />
               Signed in as {user?.email}
             </p>
           </Card>

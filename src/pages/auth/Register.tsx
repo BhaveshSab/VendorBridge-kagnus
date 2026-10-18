@@ -106,20 +106,20 @@ export default function Register() {
   return (
     <AuthLayout
       wide
-      footer="By creating an account you agree to procurement data handling policies."
+      footer="By creating an account you agree to procurement governance and compliance policies."
     >
-      <div className="mb-5">
+      <div className="mb-6">
         <p className="eyebrow mb-2">Get started</p>
-        <h1 className="text-[24px] font-semibold tracking-[-0.02em] text-ink">Create your VendorBridge account</h1>
-        <p className="mt-1 text-[13px] text-muted">
-          Register as procurement, an approver, or a supplier.
+        <h1 className="text-[26px] font-black tracking-[-0.03em] text-ink sm:text-[30px]">Create your VendorBridge account</h1>
+        <p className="mt-1.5 text-[13px] text-muted">
+          Register as procurement staff, an approval manager, or an enterprise supplier.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} noValidate className="card p-4 sm:p-5">
+      <form onSubmit={onSubmit} noValidate className="card p-6 sm:p-8 shadow-lg border-slate-200/90">
         {error ? (
           <div
-            className="mb-4 border border-danger/30 border-l-4 border-l-danger bg-danger-soft px-3 py-2 text-[12px] text-danger"
+            className="mb-5 rounded-xl border border-danger/30 border-l-4 border-l-danger bg-danger-soft px-4 py-3 text-[12px] text-danger font-medium"
             role="alert"
           >
             {error}
@@ -134,7 +134,7 @@ export default function Register() {
               onChange={(event) => update("firstName", event.target.value)}
               invalid={Boolean(errors.firstName)}
               autoComplete="given-name"
-              placeholder="Neha"
+              placeholder="e.g. Rahul"
             />
           </Field>
           <Field label="Last name" htmlFor="lastName" error={errors.lastName} required>
@@ -144,7 +144,7 @@ export default function Register() {
               onChange={(event) => update("lastName", event.target.value)}
               invalid={Boolean(errors.lastName)}
               autoComplete="family-name"
-              placeholder="Sharma"
+              placeholder="e.g. Mehta"
             />
           </Field>
           <Field label="Work email" htmlFor="regEmail" error={errors.email} required>
@@ -197,13 +197,13 @@ export default function Register() {
 
           {isVendor ? (
             <>
-              <Field label="Company name" htmlFor="companyName" error={errors.companyName} required>
+              <Field label="Company / Entity name" htmlFor="companyName" error={errors.companyName} required>
                 <Input
                   id="companyName"
                   value={form.companyName}
                   onChange={(event) => update("companyName", event.target.value)}
                   invalid={Boolean(errors.companyName)}
-                  placeholder="Nova Office Supplies"
+                  placeholder="e.g. Nova Office Supplies Pvt Ltd"
                 />
               </Field>
               <Field label="Supply category" htmlFor="category" error={errors.category}>
@@ -222,11 +222,10 @@ export default function Register() {
             </>
           ) : (
             <div className="sm:col-span-2">
-              <div className="flex gap-2 rounded-card border border-brand-200 bg-brand-50 px-3 py-2">
-                <Info size={14} className="mt-0.5 shrink-0 text-brand-600" aria-hidden />
-                <p className="text-[11px] leading-relaxed text-brand-800">
-                  {ROLE_OPTIONS.find((option) => option.value === form.role)?.hint}. Access is enforced on the
-                  server for every endpoint.
+              <div className="flex gap-2.5 rounded-xl border border-blue-200 bg-blue-50/70 p-3">
+                <Info size={16} className="mt-0.5 shrink-0 text-brand-600" aria-hidden />
+                <p className="text-[12px] leading-relaxed text-brand-900">
+                  {ROLE_OPTIONS.find((option) => option.value === form.role)?.hint}. Role authorizations are securely enforced at the API layer.
                 </p>
               </div>
             </div>
@@ -254,10 +253,10 @@ export default function Register() {
               <button
                 type="button"
                 onClick={() => setShowPassword((value) => !value)}
-                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-card text-muted hover:text-ink"
+                className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-slate-100 transition-colors"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
           </Field>
@@ -277,23 +276,24 @@ export default function Register() {
             label="Additional information"
             htmlFor="additionalInfo"
             error={errors.additionalInfo}
-            hint="Optional — tell us how you'll use VendorBridge."
+            hint="Optional notes for the onboarding administrator."
             className="sm:col-span-2"
           >
             <Textarea
               id="additionalInfo"
               value={form.additionalInfo}
               onChange={(event) => update("additionalInfo", event.target.value)}
-              placeholder="Team, region, or anything the procurement team should know."
+              placeholder="Team division, specializations, or region context…"
+              rows={2}
             />
           </Field>
         </div>
 
-        <Button type="submit" className="mt-4 w-full" loading={loading} icon={<ArrowRight size={14} />}>
-          {loading ? "Creating account" : isVendor ? "Register as vendor" : "Create account"}
+        <Button type="submit" className="mt-6 w-full btn-lg justify-center shadow-md" loading={loading} icon={<ArrowRight size={15} />}>
+          {loading ? "Creating account…" : isVendor ? "Register as enterprise vendor" : "Create procurement account"}
         </Button>
 
-        <p className="mt-4 text-center text-[12px] text-muted">
+        <p className="mt-5 text-center text-[12px] text-muted">
           Already have an account?{" "}
           <Link to="/login" className="link">
             Sign in

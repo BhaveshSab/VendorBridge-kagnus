@@ -43,7 +43,7 @@ export function Button({
       disabled={disabled || loading}
       {...rest}
     >
-      {loading ? <Loader2 size={14} className="spin" aria-hidden /> : icon}
+      {loading ? <Loader2 size={14} className="spin shrink-0" aria-hidden /> : icon ? <span className="shrink-0">{icon}</span> : null}
       {children}
     </button>
   );
@@ -80,28 +80,30 @@ export function StatCard({
   trend?: { value: string; positive?: boolean };
 }) {
   return (
-    <div className="card p-4">
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">{label}</p>
+    <div className="card card-hover p-5 transition-all">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">{label}</p>
         {icon ? (
-          <span className="flex h-8 w-8 items-center justify-center rounded-card bg-brand-50 text-brand-600">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 text-brand-600 border border-blue-100/80 shadow-xs">
             {icon}
           </span>
         ) : null}
       </div>
-      <p className="mt-2 text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">{value}</p>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        {hint ? <p className="text-xs text-muted">{hint}</p> : null}
+      <p className="mt-3 text-[28px] font-extrabold leading-tight tracking-[-0.03em] text-ink">{value}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {trend ? (
           <span
             className={cn(
-              "text-[11px] font-semibold",
-              trend.positive === false ? "text-danger" : "text-success",
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold",
+              trend.positive === false
+                ? "bg-rose-50 text-rose-700 border border-rose-200"
+                : "bg-emerald-50 text-emerald-700 border border-emerald-200",
             )}
           >
             {trend.value}
           </span>
         ) : null}
+        {hint ? <p className="text-xs font-medium text-muted">{hint}</p> : null}
       </div>
     </div>
   );
@@ -119,19 +121,36 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
-        {eyebrow ? <div className="eyebrow mb-1">{eyebrow}</div> : null}
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink sm:text-2xl">{title}</h1>
+        {eyebrow ? <div className="eyebrow mb-1.5">{eyebrow}</div> : null}
+        <h1 className="text-[24px] font-bold tracking-[-0.03em] text-ink sm:text-[28px]">{title}</h1>
         {description ? <p className="mt-1 max-w-2xl text-[13px] text-muted">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap items-center gap-2.5 shrink-0">{actions}</div> : null}
     </div>
   );
 }
 
+const statusDotColors: Record<string, string> = {
+  Active: "bg-emerald-500",
+  Approved: "bg-emerald-500",
+  Pending: "bg-amber-500",
+  "Under Review": "bg-amber-500",
+  Inactive: "bg-slate-400",
+  Draft: "bg-slate-400",
+  Blocked: "bg-rose-500",
+  Rejected: "bg-rose-500",
+};
+
 export function Badge({ status, className }: { status: string; className?: string }) {
-  return <span className={cn(statusClass(status), className)}>{status}</span>;
+  const dotColor = statusDotColors[status] || "bg-blue-500";
+  return (
+    <span className={cn(statusClass(status), className)}>
+      <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0", dotColor)} aria-hidden />
+      {status}
+    </span>
+  );
 }
 
 export function Field({
@@ -156,7 +175,7 @@ export function Field({
       {label ? (
         <label className="label" htmlFor={htmlFor}>
           {label}
-          {required ? <span className="ml-1 text-danger">*</span> : null}
+          {required ? <span className="ml-1 text-danger font-bold">*</span> : null}
         </label>
       ) : null}
       {children}
@@ -214,22 +233,22 @@ export function SearchInput({
   return (
     <div className={cn("relative", className)}>
       <Search
-        size={14}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+        size={15}
+        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
         aria-hidden
       />
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="input pl-8 pr-8"
+        className="input pl-9 pr-9"
         aria-label={placeholder}
       />
       {value ? (
         <button
           type="button"
           onClick={() => onChange("")}
-          className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-chip text-muted hover:text-ink"
+          className="absolute right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted hover:text-ink hover:bg-slate-100 transition-colors"
           aria-label="Clear search"
         >
           <X size={12} />
@@ -257,7 +276,7 @@ export function Tabs({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap gap-1 border-b border-line", className)} role="tablist">
+    <div className={cn("flex flex-wrap gap-1.5 border-b border-line pb-0.5", className)} role="tablist">
       {tabs.map((tab) => {
         const active = tab.value === value;
         return (
@@ -268,18 +287,18 @@ export function Tabs({
             aria-selected={active}
             onClick={() => onChange(tab.value)}
             className={cn(
-              "-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-medium transition-colors",
+              "-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-[13px] font-semibold transition-all",
               active
-                ? "border-brand-600 text-brand-700"
-                : "border-transparent text-muted hover:border-line-strong hover:text-ink",
+                ? "border-brand-600 text-brand-700 bg-brand-50/50 rounded-t-lg"
+                : "border-transparent text-muted hover:border-slate-300 hover:text-ink",
             )}
           >
             {tab.label}
             {tab.count != null ? (
               <span
                 className={cn(
-                  "rounded-chip px-1.5 py-0.5 text-[10px] font-semibold",
-                  active ? "bg-brand-50 text-brand-700" : "bg-neutral-soft text-muted",
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold transition-colors",
+                  active ? "bg-brand-600 text-white" : "bg-slate-100 text-slate-600",
                 )}
               >
                 {tab.count}
@@ -294,9 +313,9 @@ export function Tabs({
 
 export function Spinner({ label = "Loading" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 py-16 text-muted" role="status">
-      <Loader2 size={18} className="spin text-brand-600" aria-hidden />
-      <span className="text-[13px]">{label}…</span>
+    <div className="flex items-center justify-center gap-2.5 py-16 text-muted" role="status">
+      <Loader2 size={20} className="spin text-brand-600" aria-hidden />
+      <span className="text-[13px] font-medium">{label}…</span>
     </div>
   );
 }
@@ -313,16 +332,16 @@ export function ErrorState({
   onRetry?: () => void;
 }) {
   return (
-    <div className="card flex flex-col items-center gap-3 px-4 py-12 text-center">
-      <span className="flex h-10 w-10 items-center justify-center rounded-card bg-danger-soft text-danger">
-        <AlertTriangle size={18} aria-hidden />
+    <div className="card flex flex-col items-center gap-3.5 px-6 py-12 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-danger-soft text-danger border border-danger/20 shadow-xs">
+        <AlertTriangle size={20} aria-hidden />
       </span>
       <div>
-        <p className="text-[13px] font-semibold text-ink">Something went wrong</p>
+        <p className="text-[14px] font-bold text-ink">Something went wrong</p>
         <p className="mt-1 max-w-md text-xs text-muted">{message}</p>
       </div>
       {onRetry ? (
-        <Button variant="ghost" size="sm" onClick={onRetry}>
+        <Button variant="ghost" size="sm" onClick={onRetry} className="mt-1">
           Try again
         </Button>
       ) : null}
@@ -346,13 +365,13 @@ export function EmptyState({
   return (
     <div className={cn("flex flex-col items-center text-center", compact ? "px-4 py-8" : "px-4 py-16")}>
       {icon ? (
-        <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-card bg-brand-50 text-brand-600">
+        <span className="mb-3.5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 text-brand-600 border border-blue-100 shadow-xs">
           {icon}
         </span>
       ) : null}
-      <p className="text-[13px] font-semibold text-ink">{title}</p>
-      {description ? <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted">{description}</p> : null}
-      {action ? <div className="mt-4">{action}</div> : null}
+      <p className="text-[14px] font-bold text-ink">{title}</p>
+      {description ? <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-muted">{description}</p> : null}
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }
@@ -397,41 +416,41 @@ export function Modal({
       {open ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
           <motion.div
-            className="absolute inset-0 bg-black/60"
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-md"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            transition={{ duration: 0.18 }}
             onClick={onClose}
           />
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
+            initial={{ opacity: 0, scale: 0.96, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 8 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              "relative flex max-h-[92vh] w-full flex-col border border-line-strong bg-surface",
+              "relative flex max-h-[92vh] w-full flex-col border border-slate-200/90 bg-white shadow-2xl overflow-hidden",
               widths[size],
             )}
-            style={{ borderRadius: "16px 16px 0 0" }}
+            style={{ borderRadius: "18px" }}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-line px-4 py-4 sm:px-5">
+            <div className="flex items-start justify-between gap-4 border-b border-line bg-gradient-to-r from-slate-50/70 to-white px-5 py-4 sm:px-6">
               <div>
-                <h2 id={titleId} className="text-[15px] font-semibold text-ink">
+                <h2 id={titleId} className="text-[16px] font-bold text-ink">
                   {title}
                 </h2>
                 {description ? <p className="mt-1 text-xs text-muted">{description}</p> : null}
               </div>
-              <IconButton label="Close dialog" onClick={onClose} className="-mr-1 -mt-1">
+              <IconButton label="Close dialog" onClick={onClose} className="-mr-1 -mt-1 hover:bg-slate-200/60">
                 <X size={16} />
               </IconButton>
             </div>
-            <div className="scrollbar-thin flex-1 overflow-y-auto px-4 py-4 sm:px-5">{children}</div>
+            <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-5 sm:px-6">{children}</div>
             {footer ? (
-              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-surface-muted px-4 py-3 sm:px-5">
+              <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-line bg-slate-50/70 px-5 py-3.5 sm:px-6">
                 {footer}
               </div>
             ) : null}
@@ -495,7 +514,7 @@ export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md"
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-700",
+        "inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-brand-600 to-indigo-600 font-bold text-white shadow-xs",
         sizes[size],
       )}
       aria-hidden
@@ -522,20 +541,20 @@ export function Pagination({
   const end = Math.min(page * pageSize, total);
 
   return (
-    <div className="flex flex-col items-center justify-between gap-2 border-t border-line px-4 py-3 sm:flex-row">
-      <p className="text-[11px] text-muted">
-        Showing <span className="font-semibold text-ink-soft">{start}–{end}</span> of{" "}
-        <span className="font-semibold text-ink-soft">{total}</span>
+    <div className="flex flex-col items-center justify-between gap-3 border-t border-line/80 px-5 py-3.5 sm:flex-row bg-slate-50/40">
+      <p className="text-[12px] text-muted">
+        Showing <span className="font-bold text-ink">{start}–{end}</span> of{" "}
+        <span className="font-bold text-ink">{total}</span> records
       </p>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         <IconButton label="Previous page" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
-          <ChevronLeft size={14} />
+          <ChevronLeft size={15} />
         </IconButton>
-        <span className="px-2 text-[11px] font-medium text-ink-soft">
+        <span className="px-3 py-1 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-ink shadow-xs">
           Page {page} of {pages}
         </span>
         <IconButton label="Next page" onClick={() => onPageChange(page + 1)} disabled={page >= pages}>
-          <ChevronRight size={14} />
+          <ChevronRight size={15} />
         </IconButton>
       </div>
     </div>
@@ -545,17 +564,24 @@ export function Pagination({
 export function DetailItem({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted">{label}</dt>
-      <dd className="mt-1 text-[13px] font-medium text-ink">{children}</dd>
+      <dt className="text-[10px] font-bold uppercase tracking-[0.07em] text-muted">{label}</dt>
+      <dd className="mt-1 text-[13px] font-semibold text-ink">{children}</dd>
     </div>
   );
 }
 
 export function ProgressBar({ value, tone = "brand" }: { value: number; tone?: "brand" | "warning" | "danger" }) {
-  const colors = { brand: "bg-brand-600", warning: "bg-warning", danger: "bg-danger" };
+  const colors = {
+    brand: "bg-gradient-to-r from-blue-500 to-indigo-600",
+    warning: "bg-gradient-to-r from-amber-400 to-amber-500",
+    danger: "bg-gradient-to-r from-rose-500 to-rose-600",
+  };
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-chip bg-neutral-soft" role="presentation">
-      <div className={cn("h-full", colors[tone])} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100" role="presentation">
+      <div
+        className={cn("h-full transition-all duration-500 ease-out", colors[tone])}
+        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+      />
     </div>
   );
 }
@@ -572,9 +598,9 @@ export function CopyInline({ text }: { text: string }) {
           window.setTimeout(() => setCopied(false), 1500);
         } catch {}
       }}
-      className="text-[11px] font-medium text-muted transition-colors hover:text-brand-700"
+      className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:text-brand-700 transition-colors"
     >
-      {copied ? "Copied" : "Copy"}
+      {copied ? "Copied!" : "Copy"}
     </button>
   );
 }

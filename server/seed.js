@@ -153,6 +153,8 @@ export async function seed({ force = false } = {}) {
 
 if (process.argv[1] && process.argv[1].endsWith("seed.js")) {
   try {
+    const { ensureDatabase } = await import("./ensureDb.js");
+    await ensureDatabase();
     const force = process.argv.includes("--force");
     const seeded = await seed({ force });
     console.log(

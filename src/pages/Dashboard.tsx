@@ -9,6 +9,7 @@ import {
   Layers,
   Plus,
   ShieldCheck,
+  Sparkles,
   Star,
   Users,
 } from "lucide-react";
@@ -33,22 +34,25 @@ interface DashboardResponse {
 
 const UPCOMING = [
   {
-    week: "Week 2",
+    badge: "Coming Soon",
     title: "RFQs & quotations",
     description: "Raise requests, invite vendors and compare submitted quotations.",
     icon: ClipboardList,
+    badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
   },
   {
-    week: "Week 3",
+    badge: "Planned",
     title: "Approvals, orders & invoices",
     description: "Approve awards, generate purchase orders and issue invoices.",
     icon: FileSpreadsheet,
+    badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
   },
   {
-    week: "Week 4",
+    badge: "Roadmap",
     title: "Reports & audit trail",
     description: "Spend analytics, exportable reports and a full activity history.",
     icon: ShieldCheck,
+    badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
   },
 ];
 
@@ -61,23 +65,28 @@ function greeting() {
 
 function UpcomingModules() {
   return (
-    <Card>
-      <div className="border-b border-line px-4 py-3">
-        <h2 className="text-[13px] font-semibold text-ink">Scheduled for later weeks</h2>
-        <p className="text-[11px] text-muted">These modules ship next; their data areas stay empty until then</p>
+    <Card className="overflow-hidden">
+      <div className="border-b border-line/80 bg-slate-50/50 px-5 py-3.5">
+        <h2 className="text-[13px] font-bold text-ink flex items-center gap-2">
+          <Sparkles size={15} className="text-amber-500" />
+          Scheduled for upcoming milestones
+        </h2>
+        <p className="text-[11px] text-muted">Planned enterprise capabilities on the product roadmap</p>
       </div>
-      <ul className="divide-y divide-line">
+      <ul className="divide-y divide-line/60">
         {UPCOMING.map((module) => {
           const Icon = module.icon;
           return (
-            <li key={module.week} className="flex items-start gap-3 px-4 py-3">
-              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-card bg-surface-muted text-muted">
-                <Icon size={15} />
+            <li key={module.title} className="flex items-start gap-3.5 px-5 py-3.5 hover:bg-slate-50/40 transition-colors">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 border border-slate-200/60 shadow-xs">
+                <Icon size={16} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[12px] font-semibold text-ink">{module.title}</p>
-                  <span className="badge badge-pending text-[10px]">{module.week}</span>
+                  <p className="text-[13px] font-bold text-ink">{module.title}</p>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${module.badgeColor}`}>
+                    {module.badge}
+                  </span>
                 </div>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-muted">{module.description}</p>
               </div>
@@ -95,23 +104,26 @@ function CategoryList({ items, total }: { items: { name: string; count: number }
   }
   const max = Math.max(1, ...items.map((item) => item.count));
   return (
-    <ul className="space-y-2.5">
-      {items.slice(0, 6).map((item) => (
-        <li key={item.name}>
-          <div className="mb-1 flex items-baseline justify-between gap-2">
-            <span className="truncate text-[12px] text-ink-soft">{item.name}</span>
-            <span className="shrink-0 text-[11px] text-muted">
-              {item.count} · {Math.round((item.count / Math.max(total, 1)) * 100)}%
-            </span>
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-chip bg-neutral-soft">
-            <div
-              className="h-full bg-brand-600"
-              style={{ width: `${Math.max(4, Math.round((item.count / max) * 100))}%` }}
-            />
-          </div>
-        </li>
-      ))}
+    <ul className="space-y-3">
+      {items.slice(0, 6).map((item) => {
+        const percent = Math.round((item.count / Math.max(total, 1)) * 100);
+        return (
+          <li key={item.name} className="p-1.5 rounded-lg hover:bg-slate-50/80 transition-colors">
+            <div className="mb-1.5 flex items-baseline justify-between gap-2">
+              <span className="truncate text-[12px] font-semibold text-ink-soft">{item.name}</span>
+              <span className="shrink-0 text-[11px] font-bold text-slate-500">
+                {item.count} <span className="font-normal text-muted">({percent}%)</span>
+              </span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 shadow-inner">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${Math.max(6, Math.round((item.count / max) * 100))}%` }}
+              />
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -132,18 +144,18 @@ export default function Dashboard() {
       <div className="page-shell">
         <div className="mb-6 space-y-2">
           <SkeletonBlock className="h-3 w-32" />
-          <SkeletonBlock className="h-7 w-72" />
+          <SkeletonBlock className="h-8 w-72" />
         </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[0, 1, 2, 3].map((item) => (
-            <div key={item} className="card p-4">
+            <div key={item} className="card p-5">
               <SkeletonBlock className="h-3 w-24" />
-              <SkeletonBlock className="mt-3 h-7 w-20" />
+              <SkeletonBlock className="mt-3 h-8 w-20" />
               <SkeletonBlock className="mt-2 h-3 w-28" />
             </div>
           ))}
         </div>
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
           <SkeletonBlock className="h-72 lg:col-span-2" />
           <SkeletonBlock className="h-72" />
         </div>
@@ -174,28 +186,28 @@ export default function Dashboard() {
       <div className="page-shell">
         <PageHeader
           eyebrow={
-            <span className="inline-flex items-center gap-1.5">
-              <CalendarDays size={12} aria-hidden />
+            <span className="inline-flex items-center gap-1.5 text-brand-600 font-bold">
+              <CalendarDays size={13} aria-hidden />
               {today}
             </span>
           }
           title={`${greeting()}, ${user?.firstName ?? "there"}`}
-          description={`${roleLabel} · Today's overview`}
+          description={`${roleLabel} · Real-time procurement overview`}
           actions={
             isVendor ? (
               <Link to="/vendors" className="btn btn-ghost btn-sm">
-                <Building2 size={13} />
+                <Building2 size={14} />
                 My vendor profile
               </Link>
             ) : (
               <>
                 <Link to="/vendors" className="btn btn-ghost btn-sm">
-                  <Building2 size={13} />
+                  <Building2 size={14} />
                   Vendor register
                 </Link>
                 {permissions?.manageVendors ? (
                   <Link to="/vendors?new=1" className="btn btn-primary btn-sm">
-                    <Plus size={14} />
+                    <Plus size={15} />
                     Add vendor
                   </Link>
                 ) : null}
@@ -204,139 +216,146 @@ export default function Dashboard() {
           }
         />
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Metric Cards */}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label="Active RFQs"
             value="—"
-            hint="Available in Week 2"
-            icon={<ClipboardList size={15} />}
+            hint="Scheduled release"
+            icon={<ClipboardList size={18} />}
           />
           <StatCard
             label="Pending approvals"
             value="—"
-            hint="Available in Week 3"
-            icon={<BadgeCheck size={15} />}
+            hint="Scheduled release"
+            icon={<BadgeCheck size={18} />}
           />
           <StatCard
             label="PO value"
             value="—"
-            hint="Available in Week 3"
-            icon={<IndianRupee size={15} />}
+            hint="Scheduled release"
+            icon={<IndianRupee size={18} />}
           />
           <StatCard
             label={isVendor ? "Suppliers on register" : "Active vendors"}
             value={isVendor ? data.totalVendors : activeVendors}
-            hint={isVendor ? "Across all categories" : `${pendingVendors} awaiting verification`}
-            icon={<Users size={15} />}
+            hint={isVendor ? "Across all categories" : `${pendingVendors} pending review`}
+            icon={<Users size={18} />}
+            trend={{ value: `${Math.round(((activeVendors || 1) / Math.max(data.totalVendors, 1)) * 100)}% active`, positive: true }}
           />
         </div>
 
+        {/* Quick Action Tiles */}
         {!isVendor ? (
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="mt-4 grid gap-3.5 sm:grid-cols-3">
             {permissions?.manageVendors ? (
               <Link
                 to="/vendors?new=1"
-                className="card flex items-center gap-3 p-3 transition-colors hover:border-brand-300 hover:bg-brand-50"
+                className="card card-hover flex items-center gap-3.5 p-4 transition-all hover:border-blue-400 group"
               >
-                <span className="flex h-9 w-9 items-center justify-center rounded-card bg-brand-50 text-brand-600">
-                  <Plus size={16} />
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/10 to-indigo-500/20 text-brand-600 border border-blue-200/80 group-hover:scale-105 transition-transform">
+                  <Plus size={18} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[12px] font-semibold text-ink">Add a vendor</span>
-                  <span className="block text-[11px] text-muted">Capture GST, contact and status</span>
+                  <span className="block text-[13px] font-bold text-ink group-hover:text-brand-600 transition-colors">Add a new vendor</span>
+                  <span className="block text-[11px] text-muted">Capture GSTIN, contacts &amp; status</span>
                 </span>
-                <ArrowRight size={14} className="ml-auto text-muted" />
+                <ArrowRight size={15} className="ml-auto text-slate-400 group-hover:text-brand-600 group-hover:translate-x-1 transition-all" />
               </Link>
             ) : null}
             <Link
               to="/vendors"
-              className="card flex items-center gap-3 p-3 transition-colors hover:border-brand-300 hover:bg-brand-50"
+              className="card card-hover flex items-center gap-3.5 p-4 transition-all hover:border-blue-400 group"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-card bg-brand-50 text-brand-600">
-                <Building2 size={16} />
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/10 to-indigo-500/20 text-brand-600 border border-blue-200/80 group-hover:scale-105 transition-transform">
+                <Building2 size={18} />
               </span>
               <span className="min-w-0">
-                <span className="block text-[12px] font-semibold text-ink">Manage vendors</span>
+                <span className="block text-[13px] font-bold text-ink group-hover:text-brand-600 transition-colors">Manage vendors</span>
                 <span className="block text-[11px] text-muted">Search, filter and update records</span>
               </span>
-              <ArrowRight size={14} className="ml-auto text-muted" />
+              <ArrowRight size={15} className="ml-auto text-slate-400 group-hover:text-brand-600 group-hover:translate-x-1 transition-all" />
             </Link>
-            <div className="card flex items-center gap-3 p-3 opacity-70">
-              <span className="flex h-9 w-9 items-center justify-center rounded-card bg-surface-muted text-muted">
-                <ClipboardList size={16} />
+            <div className="card flex items-center gap-3.5 p-4 opacity-75 border-dashed">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 border border-slate-200">
+                <ClipboardList size={18} />
               </span>
               <span className="min-w-0">
-                <span className="flex items-center gap-2 text-[12px] font-semibold text-ink">
+                <span className="flex items-center gap-2 text-[13px] font-bold text-ink">
                   Create an RFQ
-                  <span className="badge badge-pending text-[10px]">Week 2</span>
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    Coming Soon
+                  </span>
                 </span>
-                <span className="block text-[11px] text-muted">Invite vendors to quote</span>
+                <span className="block text-[11px] text-muted">Invite suppliers to submit bids</span>
               </span>
             </div>
           </div>
         ) : null}
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
-          <div className="min-w-0 space-y-4 lg:col-span-2">
+        {/* Main Content Grid */}
+        <div className="mt-5 grid gap-5 lg:grid-cols-3">
+          <div className="min-w-0 space-y-5 lg:col-span-2">
             {isVendor ? (
               data.vendor ? (
-                <Card>
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-4">
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-card bg-brand-50 text-[14px] font-bold text-brand-700">
+                <Card className="overflow-hidden">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line bg-gradient-to-r from-blue-50/40 to-white px-5 py-4">
+                    <div className="flex items-start gap-3.5">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-[15px] font-bold text-white shadow-xs">
                         {data.vendor.name.slice(0, 2).toUpperCase()}
                       </span>
                       <div>
-                        <h2 className="text-[15px] font-semibold text-ink">{data.vendor.name}</h2>
-                        <p className="text-[11px] text-muted">
-                          {data.vendor.code} · {data.vendor.category}
+                        <h2 className="text-[16px] font-bold text-ink">{data.vendor.name}</h2>
+                        <p className="text-[12px] text-muted">
+                          <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[11px] font-semibold text-slate-700 mr-1.5">{data.vendor.code}</span>
+                          {data.vendor.category}
                         </p>
                       </div>
                     </div>
                     <Badge status={data.vendor.status} />
                   </div>
-                  <dl className="grid gap-4 px-4 py-4 sm:grid-cols-2">
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-[0.06em] text-muted">Primary contact</dt>
-                      <dd className="mt-1 text-[12px] font-medium text-ink">{data.vendor.contactName || "—"}</dd>
-                      <dd className="mt-0.5 text-[11px] text-muted">{data.vendor.email}</dd>
-                      <dd className="text-[11px] text-muted">{data.vendor.phone || "No phone on file"}</dd>
+                  <dl className="grid gap-4 px-5 py-5 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200/80 p-3.5 bg-slate-50/40">
+                      <dt className="text-[10px] font-bold uppercase tracking-[0.07em] text-muted">Primary contact</dt>
+                      <dd className="mt-1 text-[13px] font-bold text-ink">{data.vendor.contactName || "—"}</dd>
+                      <dd className="mt-0.5 text-[12px] text-muted">{data.vendor.email}</dd>
+                      <dd className="text-[12px] text-muted">{data.vendor.phone || "No phone on file"}</dd>
                     </div>
-                    <div>
-                      <dt className="text-[10px] uppercase tracking-[0.06em] text-muted">Location & compliance</dt>
-                      <dd className="mt-1 text-[12px] text-ink">
+                    <div className="rounded-xl border border-slate-200/80 p-3.5 bg-slate-50/40">
+                      <dt className="text-[10px] font-bold uppercase tracking-[0.07em] text-muted">Location & compliance</dt>
+                      <dd className="mt-1 text-[13px] font-semibold text-ink">
                         {[data.vendor.city, data.vendor.country].filter(Boolean).join(", ") || "No address"}
                       </dd>
-                      <dd className="mt-0.5 font-mono text-[11px] text-muted">{data.vendor.gstin || "GSTIN pending"}</dd>
-                      <dd className="mt-0.5 flex items-center gap-1 text-[11px] text-muted">
-                        <Star size={11} /> {data.vendor.rating.toFixed(1)} rating
+                      <dd className="mt-0.5 font-mono text-[11px] text-slate-600">{data.vendor.gstin || "GSTIN pending"}</dd>
+                      <dd className="mt-1 flex items-center gap-1 text-[12px] font-bold text-amber-600">
+                        <Star size={12} className="fill-amber-400 text-amber-500" /> {data.vendor.rating.toFixed(1)} rating
                       </dd>
                     </div>
                   </dl>
-                  <div className="border-t border-line px-4 py-3">
-                    <Link to="/vendors" className="link text-[11px]">
-                      View full vendor profile
+                  <div className="border-t border-line bg-slate-50/50 px-5 py-3">
+                    <Link to="/vendors" className="link text-[12px] font-bold inline-flex items-center gap-1">
+                      View full vendor profile <ArrowRight size={13} />
                     </Link>
                   </div>
                 </Card>
               ) : (
                 <Card>
                   <EmptyState
-                    icon={<Building2 size={18} />}
+                    icon={<Building2 size={20} />}
                     title="Vendor profile missing"
                     description="Your account is not linked to a vendor record yet. Contact the procurement team to complete onboarding."
                   />
                 </Card>
               )
             ) : (
-              <Card>
-                <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <Card className="overflow-hidden">
+                <div className="flex items-center justify-between border-b border-line bg-slate-50/50 px-5 py-3.5">
                   <div>
-                    <h2 className="text-[13px] font-semibold text-ink">Vendor register</h2>
+                    <h2 className="text-[14px] font-bold text-ink">Vendor register snapshot</h2>
                     <p className="text-[11px] text-muted">Most recently updated supplier records</p>
                   </div>
-                  <Link to="/vendors" className="link text-[11px]">
-                    View all
+                  <Link to="/vendors" className="link text-[12px] font-bold inline-flex items-center gap-1">
+                    View all <ArrowRight size={13} />
                   </Link>
                 </div>
                 {data.recentVendors && data.recentVendors.length > 0 ? (
@@ -355,22 +374,27 @@ export default function Dashboard() {
                         {data.recentVendors.map((vendor) => (
                           <tr key={vendor.id}>
                             <td>
-                              <Link to="/vendors" className="font-medium text-brand-700 hover:underline">
+                              <Link to="/vendors" className="font-bold text-brand-600 hover:text-brand-700 hover:underline">
                                 {vendor.name}
                               </Link>
-                              <p className="text-[10px] text-muted">
-                                {vendor.code} · {vendor.city || "—"}
+                              <p className="text-[11px] text-muted">
+                                <span className="font-mono bg-slate-100 text-slate-700 px-1 py-0.2 rounded text-[10px] font-semibold mr-1">{vendor.code}</span>
+                                {vendor.city || "—"}
                               </p>
                             </td>
-                            <td className="hidden text-ink-soft sm:table-cell">{vendor.category}</td>
+                            <td className="hidden text-ink-soft sm:table-cell">
+                              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                {vendor.category}
+                              </span>
+                            </td>
                             <td className="hidden max-w-[180px] md:table-cell">
-                              <p className="truncate text-[12px] text-ink-soft">{vendor.contactName || "—"}</p>
-                              <p className="truncate text-[10px] text-muted">{vendor.email}</p>
+                              <p className="truncate text-[12px] font-semibold text-ink-soft">{vendor.contactName || "—"}</p>
+                              <p className="truncate text-[11px] text-muted">{vendor.email}</p>
                             </td>
                             <td>
                               <Badge status={vendor.status} />
                             </td>
-                            <td className="hidden text-right text-muted lg:table-cell">
+                            <td className="hidden text-right text-[11px] text-muted lg:table-cell font-medium">
                               {formatDate(vendor.updatedAt)}
                             </td>
                           </tr>
@@ -380,7 +404,7 @@ export default function Dashboard() {
                   </div>
                 ) : (
                   <EmptyState
-                    icon={<Building2 size={18} />}
+                    icon={<Building2 size={20} />}
                     title="No vendors yet"
                     description="Add your first supplier to start building the vendor register."
                     action={
@@ -398,42 +422,41 @@ export default function Dashboard() {
             <UpcomingModules />
           </div>
 
-          <div className="min-w-0 space-y-4">
-            <Card>
-              <div className="border-b border-line px-4 py-3">
-                <h2 className="text-[13px] font-semibold text-ink">Vendor status</h2>
+          <div className="min-w-0 space-y-5">
+            <Card className="overflow-hidden">
+              <div className="border-b border-line bg-slate-50/50 px-5 py-3.5">
+                <h2 className="text-[13px] font-bold text-ink">Vendor status breakdown</h2>
                 <p className="text-[11px] text-muted">Onboarding health across the register</p>
               </div>
-              <div className="px-4 py-4">
+              <div className="px-5 py-5">
                 {statusSegments.length > 0 ? (
-                  <DonutChart segments={statusSegments} totalLabel="Vendors" totalValue={String(data.totalVendors)} />
+                  <DonutChart segments={statusSegments} totalLabel="Total" totalValue={String(data.totalVendors)} />
                 ) : (
                   <EmptyState compact title="No vendors yet" description="Status splits appear once records exist." />
                 )}
               </div>
             </Card>
 
-            <Card>
-              <div className="border-b border-line px-4 py-3">
-                <h2 className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-                  <Layers size={13} className="text-brand-600" />
+            <Card className="overflow-hidden">
+              <div className="border-b border-line bg-slate-50/50 px-5 py-3.5">
+                <h2 className="flex items-center gap-1.5 text-[13px] font-bold text-ink">
+                  <Layers size={15} className="text-brand-600" />
                   Vendors by category
                 </h2>
                 <p className="text-[11px] text-muted">Top supplier categories on file</p>
               </div>
-              <div className="px-4 py-4">
+              <div className="px-5 py-4">
                 <CategoryList items={data.categoryCounts} total={data.totalVendors} />
               </div>
             </Card>
 
-            <Card className="p-4">
-              <p className="text-[12px] font-semibold text-ink">Week 1 scope</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-muted">
-                Authentication, role-aware navigation, the dashboard foundation and full vendor management are live.
-                Vendor figures are read directly from the database.
+            <Card className="p-5 border-blue-100 bg-gradient-to-br from-white to-blue-50/30">
+              <p className="text-[13px] font-bold text-ink">Vendor Management Suite</p>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                Authentication, role-aware navigation, the dashboard foundation and complete vendor management are live and ready.
               </p>
-              <Link to="/vendors" className="btn btn-ghost btn-sm mt-3 w-full">
-                Open vendor register
+              <Link to="/vendors" className="btn btn-ghost btn-sm mt-3.5 w-full justify-center">
+                Open full vendor register
               </Link>
             </Card>
           </div>
