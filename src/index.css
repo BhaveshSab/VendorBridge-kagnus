@@ -365,6 +365,25 @@
     border-color: #bfdbfe;
   }
 
+  /* Week 2 RFQ lifecycle states */
+  .badge-closed {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #e2e8f0;
+  }
+
+  .badge-expired {
+    background: #fff7ed;
+    color: #c2410c;
+    border-color: #fed7aa;
+  }
+
+  .badge-lowest {
+    background: #ecfdf5;
+    color: #047857;
+    border-color: #a7f3d0;
+  }
+
   /* Table */
   .table-container {
     width: 100%;

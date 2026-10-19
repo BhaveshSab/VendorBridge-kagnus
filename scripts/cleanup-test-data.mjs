@@ -28,6 +28,10 @@ try {
     ],
   };
 
+  // RFQs created by the Week 2 suite carry this reserved title prefix. Their
+  // line items, assignments and quotations are removed by ON DELETE CASCADE.
+  const rfqs = await prisma.rfq.deleteMany({ where: { title: { startsWith: "[smoke]" } } });
+
   const vendors = await prisma.vendor.deleteMany({ where: vendorWhere });
   const users =
     userIds.length > 0
@@ -35,7 +39,7 @@ try {
       : { count: 0 };
 
   console.log(
-    `Removed ${users.count} test account(s) and ${vendors.count} test vendor record(s) (${TEST_DOMAIN}).`,
+    `Removed ${users.count} test account(s), ${vendors.count} test vendor record(s) (${TEST_DOMAIN}) and ${rfqs.count} test RFQ(s).`,
   );
   console.log("Seeded demo users and vendors were not modified.");
 } catch (error) {

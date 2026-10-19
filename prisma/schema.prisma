@@ -21,6 +21,7 @@ model User {
   vendors        Vendor[]        @relation("VendorAccount")
   createdVendors Vendor[]        @relation("VendorCreator")
   passwordResets PasswordReset[]
+  createdRfqs    Rfq[]           @relation("RfqCreator")
 
   @@map("users")
 }
@@ -57,10 +58,112 @@ model Vendor {
   updatedAt   DateTime @map("updated_at")
   account     User?    @relation("VendorAccount", fields: [userId], references: [id], onDelete: SetNull)
   creator     User?    @relation("VendorCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  assignments RfqAssignment[]
+  quotations  Quotation[]
 
   @@index([status])
   @@index([category])
   @@map("vendors")
+}
+
+// Week 2 — RFQ and quotation workflow.
+//
+// Money is stored as fixed-point Decimal; every total is derived on the server
+// from the stored unit prices and quantities. The request payload never carries
+// a price total, and the database CHECK constraints reject negative amounts.
+
+model Rfq {
+  id          Int       @id @default(autoincrement())
+  reference   String    @unique
+  title       String
+  description String?
+  currency    String
+  status      String    @default("draft")
+  deadline    DateTime
+  createdBy   Int       @map("created_by")
+  createdAt   DateTime  @map("created_at")
+  updatedAt   DateTime  @map("updated_at")
+  publishedAt DateTime? @map("published_at")
+  closedAt    DateTime? @map("closed_at")
+  cancelledAt DateTime? @map("cancelled_at")
+  creator     User      @relation("RfqCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  items       RfqItem[]
+  assignments RfqAssignment[]
+  quotations  Quotation[]
+
+  @@index([status])
+  @@index([deadline])
+  @@index([createdBy])
+  @@map("rfqs")
+}
+
+model RfqItem {
+  id             Int             @id @default(autoincrement())
+  rfqId          Int             @map("rfq_id")
+  position       Int
+  description    String
+  quantity       Decimal         @db.Decimal(12, 3)
+  unit           String
+  specifications String?
+  rfq            Rfq             @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  quotationItems QuotationItem[]
+
+  @@unique([rfqId, position])
+  @@index([rfqId])
+  @@map("rfq_items")
+}
+
+model RfqAssignment {
+  id         Int      @id @default(autoincrement())
+  rfqId      Int      @map("rfq_id")
+  vendorId   Int      @map("vendor_id")
+  assignedAt DateTime @map("assigned_at")
+  rfq        Rfq      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([rfqId, vendorId])
+  @@index([vendorId])
+  @@map("rfq_assignments")
+}
+
+model Quotation {
+  id             Int             @id @default(autoincrement())
+  rfqId          Int             @map("rfq_id")
+  vendorId       Int             @map("vendor_id")
+  currency       String
+  deliveryDays   Int             @map("delivery_days")
+  deliveryTerms  String?         @map("delivery_terms")
+  notes          String?
+  taxPercent     Decimal         @default(0) @db.Decimal(5, 2) @map("tax_percent")
+  subtotal       Decimal         @db.Decimal(14, 2)
+  taxAmount      Decimal         @db.Decimal(14, 2) @map("tax_amount")
+  shippingAmount Decimal         @db.Decimal(14, 2) @map("shipping_amount")
+  total          Decimal         @db.Decimal(14, 2)
+  revision       Int             @default(1)
+  submittedAt    DateTime        @map("submitted_at")
+  updatedAt      DateTime        @map("updated_at")
+  rfq            Rfq             @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendor         Vendor          @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  items          QuotationItem[]
+
+  @@unique([rfqId, vendorId])
+  @@index([rfqId])
+  @@index([vendorId])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id          Int       @id @default(autoincrement())
+  quotationId Int       @map("quotation_id")
+  rfqItemId   Int       @map("rfq_item_id")
+  unitPrice   Decimal   @db.Decimal(14, 2) @map("unit_price")
+  lineTotal   Decimal   @db.Decimal(14, 2) @map("line_total")
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  rfqItem     RfqItem   @relation(fields: [rfqItemId], references: [id], onDelete: Cascade)
+
+  @@unique([quotationId, rfqItemId])
+  @@index([rfqItemId])
+  @@map("quotation_items")
 }
 
 model Counter {

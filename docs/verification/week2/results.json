@@ -1,0 +1,422 @@
+{
+  "startedAt": "2026-10-19T14:14:12.148Z",
+  "appUrl": "http://localhost:4100",
+  "database": "vendorbridge_e2e@127.0.0.1:55432",
+  "rfq": {
+    "id": 45,
+    "reference": "RFQ-0045",
+    "title": "E2E Test RFQ mvfc3kt3-14l6",
+    "items": [
+      {
+        "id": 89,
+        "description": "E2E sealed carton",
+        "quantity": "10",
+        "unit": "box"
+      },
+      {
+        "id": 90,
+        "description": "E2E packing tape",
+        "quantity": "5",
+        "unit": "pack"
+      }
+    ],
+    "vendors": [
+      "Nova Office Supplies",
+      "Zenith IT Solutions"
+    ],
+    "quotations": [
+      {
+        "vendor": "Nova Office Supplies",
+        "total": "18356.00",
+        "revision": 2,
+        "deliveryDays": 15
+      },
+      {
+        "vendor": "Zenith IT Solutions",
+        "total": "16004.00",
+        "revision": 1,
+        "deliveryDays": 9
+      }
+    ],
+    "lowest": "Zenith IT Solutions"
+  },
+  "results": [
+    {
+      "name": "database is the disposable local e2e instance",
+      "status": "PASS",
+      "detail": "vendorbridge_e2e:55432"
+    },
+    {
+      "name": "seeded vendor accounts are linked to their vendor records",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "invalid empty RFQ shows inline validation and creates nothing",
+      "status": "PASS",
+      "detail": "total 0 -> 0"
+    },
+    {
+      "name": "two vendors can be assigned in the form",
+      "status": "PASS",
+      "detail": "2 selected"
+    },
+    {
+      "name": "publish confirmation names the requirement, vendors and deadline",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "RFQ received a unique RFQ-#### reference",
+      "status": "PASS",
+      "detail": "RFQ-0045"
+    },
+    {
+      "name": "RFQ persisted with title, description, currency and 2 line items",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "RFQ is open and assigned to exactly Nova and Zenith",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "deadline is stored in the future",
+      "status": "PASS",
+      "detail": "2026-10-31T14:13:00.000Z"
+    },
+    {
+      "name": "detail page renders the saved reference, vendors, items and status",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "RFQ survives a full page reload",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "assigned RFQ appears in the vendor's list",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor list search narrows to the assigned RFQ",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor sees the procurement-created details",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor detail does not leak another vendor's quotation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "quotation submits and the vendor sees its own total",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "quotation is linked to the RFQ and authenticated vendor with server totals",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "quotation survives reload",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor opening an unassigned RFQ sees a not-found error, no data",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "second vendor's total is stored and rendered",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "second quotation has its own prices, timeline and notes",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "each vendor sees only its own quotation via the API",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor access to the staff quotation register is forbidden",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "single vendor quotation saved for RFQ D",
+      "status": "PASS",
+      "detail": "status 201 total 7975.00"
+    },
+    {
+      "name": "register shows both persisted quotations for this RFQ",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "sorting quotations highest-first updates the table",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "sorting quotations by vendor A-Z updates the table",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "comparison renders both quotations side by side",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "notes are visible to procurement in the comparison",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "comparison documents the currency and cost basis",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "server marks exactly the lowest comparable quotation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "comparison highlights the lowest vendor in the UI",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "comparison is explicitly not an award",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "comparison column sort reorders vendors A-Z",
+      "status": "PASS",
+      "detail": "requested item | nova office supplies | zenith it solutions"
+    },
+    {
+      "name": "comparison column sort by newest submission reorders vendors",
+      "status": "PASS",
+      "detail": "requested item | zenith it solutions | nova office supplies"
+    },
+    {
+      "name": "RFQ without quotations shows a real empty state, no fabricated values",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "empty comparison API reports no lowest price",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "a single quotation displays correctly without a multi-vendor sort control",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "currency-mismatched quotation is excluded and not highlighted",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "RFQ list shows the created RFQs and live status counts",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "search narrows the procurement list to the test RFQ",
+      "status": "PASS",
+      "detail": "1 row(s)"
+    },
+    {
+      "name": "no-match search shows an informative empty state",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "reference sort orders the list ascending",
+      "status": "PASS",
+      "detail": "RFQ-0045, RFQ-0046, RFQ-0047, RFQ-0048"
+    },
+    {
+      "name": "anonymous users get 401 on RFQ and quotation data",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendors cannot create, edit, publish, close or assign RFQs",
+      "status": "PASS",
+      "detail": "403,403,403,403,403"
+    },
+    {
+      "name": "vendor cannot read or submit against an unassigned RFQ",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "tampered vendor/currency/total/timestamp fields are ignored (revision policy)",
+      "status": "PASS",
+      "detail": "status 200 total 18356.00"
+    },
+    {
+      "name": "a vendor's revised quotation does not expose the other vendor's data",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "comparison reflects the saved revision with live server data",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "a new sign-in still sees the persisted quotation revision",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "past deadlines, empty line items, duplicate or unknown vendors are rejected without creating an RFQ",
+      "status": "PASS",
+      "detail": "422,422,422,422 (rows 7->7)"
+    },
+    {
+      "name": "invalid quotation payloads are rejected with 422",
+      "status": "PASS",
+      "detail": "422,422,422,422,422"
+    },
+    {
+      "name": "rejected submissions did not mutate the database",
+      "status": "PASS",
+      "detail": "count 2->2, Nova total 17666.00->18356.00 (only the valid revision changed it)"
+    },
+    {
+      "name": "one quotation row per vendor despite revisions",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "invalid RFQ ids and unknown filters are rejected",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "invalid lifecycle transitions are rejected with 409",
+      "status": "PASS",
+      "detail": "409,409,409,409"
+    },
+    {
+      "name": "draft RFQs are invisible to vendors and reject submissions",
+      "status": "PASS",
+      "detail": "GET 404, PUT 409"
+    },
+    {
+      "name": "cancelled RFQs reject submissions",
+      "status": "PASS",
+      "detail": "cancel 200, submit 409"
+    },
+    {
+      "name": "expired RFQ reports the reason and rejects submissions with 409",
+      "status": "PASS",
+      "detail": "submit 409/rfq_expired"
+    },
+    {
+      "name": "expired RFQ quotation page is locked in the UI",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "closing an RFQ stops new submissions (409) and keeps quotations readable",
+      "status": "PASS",
+      "detail": "close 200, submit 409"
+    },
+    {
+      "name": "authenticated RFQ responses are not publicly cacheable",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor RFQ listing is scoped to assigned RFQs only",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor listing pagination cannot widen access",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "database holds the RFQ with its unique reference and 2 items",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "exactly two assignment rows point at the two assigned vendors",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "two quotation rows link to the correct RFQ and vendors",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "stored prices, totals, notes and delivery data match the submissions",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "RFQ status reflects publish then close, with timestamps",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "no orphaned or duplicated quotation line items",
+      "status": "PASS",
+      "detail": "orphans 0, duplicates 0"
+    },
+    {
+      "name": "revision count advanced without duplicating the quotation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "no browser runtime errors were observed",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "test RFQs (and cascaded children) were removed",
+      "status": "PASS",
+      "detail": "7 RFQ(s) removed"
+    },
+    {
+      "name": "seeded users and vendors are untouched",
+      "status": "PASS",
+      "detail": "users 6, vendors 16"
+    }
+  ],
+  "cleanup": {
+    "removedRfqs": 7,
+    "remainingRfqs": 0,
+    "users": 6,
+    "vendors": 16,
+    "quotations": 0
+  }
+}

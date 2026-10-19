@@ -1,4 +1,4 @@
-import { Building2, LayoutDashboard, UserRound } from "lucide-react";
+import { Building2, ClipboardList, LayoutDashboard, UserRound } from "lucide-react";
 import type { Role } from "./types";
 
 export const VENDOR_CATEGORIES = [
@@ -15,6 +15,39 @@ export const VENDOR_CATEGORIES = [
 ];
 
 export const COUNTRIES = ["India", "United Arab Emirates", "Singapore", "United Kingdom", "United States", "Australia"];
+
+export const RFQ_CURRENCIES = [
+  { value: "INR", label: "INR — Indian Rupee" },
+  { value: "USD", label: "USD — US Dollar" },
+  { value: "AED", label: "AED — UAE Dirham" },
+  { value: "EUR", label: "EUR — Euro" },
+  { value: "GBP", label: "GBP — Pound Sterling" },
+  { value: "SGD", label: "SGD — Singapore Dollar" },
+];
+
+// Mirrors the server-side closed list in server/routes/rfqs.js.
+export const RFQ_UNITS = [
+  { value: "unit", label: "Unit" },
+  { value: "pcs", label: "Pieces (pcs)" },
+  { value: "box", label: "Box" },
+  { value: "pack", label: "Pack" },
+  { value: "set", label: "Set" },
+  { value: "kg", label: "Kilogram (kg)" },
+  { value: "litre", label: "Litre" },
+  { value: "metre", label: "Metre" },
+  { value: "sheet", label: "Sheet" },
+  { value: "hour", label: "Hour" },
+  { value: "day", label: "Day" },
+];
+
+export const RFQ_STATUS_TABS = [
+  { value: "all", label: "All" },
+  { value: "open", label: "Open" },
+  { value: "expired", label: "Expired" },
+  { value: "draft", label: "Draft" },
+  { value: "closed", label: "Closed" },
+  { value: "cancelled", label: "Cancelled" },
+];
 
 export const ROLE_OPTIONS: { value: "procurement" | "manager" | "vendor"; label: string; hint: string }[] = [
   { value: "procurement", label: "Procurement Officer", hint: "Manage the vendor register and supplier onboarding" },
@@ -36,6 +69,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
       { label: "Vendors", to: "/vendors", icon: Building2 },
+      { label: "RFQs & quotations", to: "/rfqs", icon: ClipboardList },
     ],
   },
 ];

@@ -10,9 +10,11 @@ try {
   ({ prisma } = await import("../server/db.js"));
   await prisma.$connect();
 
-  const [users, vendors, passwordResets, counters, rateLimits] = await Promise.all([
+  const [users, vendors, rfqs, quotations, passwordResets, counters, rateLimits] = await Promise.all([
     prisma.user.count(),
     prisma.vendor.count(),
+    prisma.rfq.count(),
+    prisma.quotation.count(),
     prisma.passwordReset.count(),
     prisma.counter.count(),
     prisma.rateLimit.count(),
@@ -20,7 +22,7 @@ try {
 
   console.log("Database connection: OK");
   console.log("Application data counts:");
-  console.log(JSON.stringify({ users, vendors, passwordResets, counters, rateLimits }, null, 2));
+  console.log(JSON.stringify({ users, vendors, rfqs, quotations, passwordResets, counters, rateLimits }, null, 2));
 } catch (error) {
   const code = error?.code ? ` (${error.code})` : "";
   console.error(`Database status check failed${code}.`);

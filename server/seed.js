@@ -68,6 +68,30 @@ export async function seed({ force = false } = {}) {
           additionalInfo: "Nova Office Supplies — account manager",
         },
       );
+      // Week 2 needs more than one vendor account to demonstrate assigning an
+      // RFQ to multiple suppliers and comparing their real submissions.
+      const zenithUser = await insertUser(
+        "Arjun",
+        "Desai",
+        "zenith@vendorbridge.dev",
+        "Vendor@123",
+        "vendor",
+        {
+          phone: "+91 98220 33445",
+          additionalInfo: "Zenith IT Solutions — account manager",
+        },
+      );
+      const apexUser = await insertUser(
+        "Jignesh",
+        "Patel",
+        "apex@vendorbridge.dev",
+        "Vendor@123",
+        "vendor",
+        {
+          phone: "+91 99250 55667",
+          additionalInfo: "Apex Hardware — account manager",
+        },
+      );
 
       const insertVendor = (vendor, code) =>
         tx.vendor.create({
@@ -111,14 +135,14 @@ export async function seed({ force = false } = {}) {
       );
 
       const vendors = [
-        ["Zenith IT Solutions", "IT Equipment", "27AAACZ5678K1Z2", "orders@zenithit.in", "Pune", "Active", 4.8, "Arjun Desai", "Bulk hardware partner with 5-day dispatch SLA."],
+        ["Zenith IT Solutions", "IT Equipment", "27AAACZ5678K1Z2", "orders@zenithit.in", "Pune", "Active", 4.8, "Arjun Desai", "Bulk hardware partner with 5-day dispatch SLA.", zenithUser.id],
         ["BluePeak Logistics", "Logistics", "07AABCB9012M1Z8", "contracts@bluepeak.in", "New Delhi", "Active", 4.3, "Karan Bhatia", "Nationwide courier and warehousing partner."],
         ["Meridian Furniture", "Furniture", "29AACCM3456P1Z1", "hello@meridianfurniture.in", "Bengaluru", "Pending", 4.1, "Sana Iyer", "Awaiting compliance documents for onboarding."],
         ["GreenLeaf Facilities", "Facilities", "29AADCG7788Q1Z4", "ops@greenleaf.in", "Hyderabad", "Active", 4.4, "Vikram Rao", "Annual facility maintenance contract."],
         ["Orbit Software Labs", "Software", "06AAECO2211R1Z9", "accounts@orbitlabs.in", "Gurugram", "Active", 4.7, "Meera Joshi", "Cloud hosting and managed support."],
         ["PaperTrail Stationery", "Stationery", "19AAFCP5544S1Z6", "sales@papertrail.in", "Kolkata", "Inactive", 3.8, "Ritu Sen", "Contract paused after pricing review."],
         ["CanteenCraft Catering", "Catering", "29AAGCC8899T1Z3", "events@canteencraft.in", "Bengaluru", "Active", 4.2, "Anil Kumar", "Office catering and event meals."],
-        ["Apex Hardware", "IT Equipment", "24AAHCA1122U1Z7", "b2b@apexhardware.in", "Ahmedabad", "Active", 4.0, "Jignesh Patel", "Peripherals and networking hardware."],
+        ["Apex Hardware", "IT Equipment", "24AAHCA1122U1Z7", "b2b@apexhardware.in", "Ahmedabad", "Active", 4.0, "Jignesh Patel", "Peripherals and networking hardware.", apexUser.id],
         ["Sunrise Printworks", "Stationery", "33AAJCS3344V1Z5", "orders@sunriseprint.in", "Chennai", "Pending", 3.9, "Deepa Menon", "New vendor, documents under verification."],
         ["Vector Movers", "Logistics", "27AAKCV6677W1Z1", "dispatch@vectormovers.in", "Mumbai", "Active", 4.5, "Sameer Khan", "Regional express logistics."],
         ["UrbanNest Interiors", "Furniture", "29AALCU9900X1Z8", "projects@urbannest.in", "Bengaluru", "Active", 4.6, "Tara Reddy", "Ergonomic workspace fit-outs."],
@@ -129,7 +153,7 @@ export async function seed({ force = false } = {}) {
       ];
 
       for (const [index, row] of vendors.entries()) {
-        const [name, category, gstin, email, city, status, rating, contactName, notes] = row;
+        const [name, category, gstin, email, city, status, rating, contactName, notes, userId] = row;
         await insertVendor(
           {
             name,
@@ -143,6 +167,7 @@ export async function seed({ force = false } = {}) {
             status,
             rating,
             notes,
+            userId,
           },
           `VND-${String(index + 2).padStart(3, "0")}`,
         );

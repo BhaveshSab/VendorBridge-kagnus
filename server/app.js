@@ -5,6 +5,7 @@ import { ApiError, authenticateOptional } from "./auth.js";
 import { prisma } from "./db.js";
 import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
+import rfqRoutes from "./routes/rfqs.js";
 import vendorRoutes from "./routes/vendors.js";
 
 // API-only Express app. It never calls listen() and never touches the local
@@ -89,6 +90,7 @@ app.get("/api/health", async (_req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/vendors", vendorRoutes);
+app.use("/api/rfqs", rfqRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
 app.use("/api", (_req, _res, next) => {
