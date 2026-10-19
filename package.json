@@ -18,6 +18,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:status": "node scripts/db-status.js",
+    "db:cleanup-tests": "node scripts/cleanup-test-data.mjs",
     "db:setup": "npm run db:generate && npm run db:deploy && npm run seed && npm run db:status",
     "db:studio": "prisma studio",
     "test:api": "node scripts/smoke-test.mjs",

@@ -1,5 +1,5 @@
 import { ArrowRight, CheckCircle2, ShieldAlert } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AuthLayout } from "../../components/AuthLayout";
 import { Button, Field, Input } from "../../components/ui";
@@ -18,6 +18,15 @@ export default function ResetPassword() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [devHelpersEnabled, setDevHelpersEnabled] = useState(false);
+
+  // Only offer the local-development token lookup when the server enables it.
+  useEffect(() => {
+    api
+      .get<{ devResetLink: boolean }>("/auth/capabilities")
+      .then((caps) => setDevHelpersEnabled(Boolean(caps?.devResetLink)))
+      .catch(() => setDevHelpersEnabled(false));
+  }, []);
 
   async function handleLookup(event: React.FormEvent) {
     event.preventDefault();
@@ -75,9 +84,12 @@ export default function ResetPassword() {
           </span>
           <h1 className="mt-4 text-[17px] font-bold text-ink">Reset token required</h1>
           <p className="mt-1.5 text-[13px] text-muted leading-relaxed">
-            Please use the secure link delivered to your email, or load your active development reset token below:
+            {devHelpersEnabled
+              ? "Please use the secure link delivered to your email, or load your active development reset token below:"
+              : "Please use the secure link delivered to your email. Reset links expire after 30 minutes and can only be used once."}
           </p>
 
+          {devHelpersEnabled ? (
           <form onSubmit={handleLookup} className="mt-5 text-left bg-slate-50 p-4 rounded-xl border border-slate-200">
             {lookupError ? (
               <div className="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-[11.5px] text-danger font-medium border border-danger/20">
@@ -97,6 +109,7 @@ export default function ResetPassword() {
               Retrieve active reset token
             </Button>
           </form>
+          ) : null}
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-center gap-3">
             <Link to="/forgot-password" className="btn btn-primary btn-sm inline-flex items-center gap-1.5">

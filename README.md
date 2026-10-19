@@ -56,7 +56,8 @@ Other scripts:
 | `npm run db:setup` | Generate Prisma Client, apply migrations, seed an empty development DB and verify counts |
 | `npm run db:studio` | Open Prisma Studio against the configured database |
 | `npm run seed` | Add the demo fixture only when both users and vendors tables are empty; never overwrites existing data |
-| `npm run test:api` | 73-check end-to-end API smoke test (see §7) |
+| `npm run test:api` | 78-check end-to-end API smoke test (see §7) |
+| `npm run db:cleanup-tests` | Remove only `@vendorbridge.test` accounts/vendors created by the test suites |
 | `npm run screenshots` | Regenerate the screenshots in `docs/screenshots/` (needs the app running) |
 | `npm run typecheck` | TypeScript check |
 
@@ -238,11 +239,12 @@ npm run test:api     # in another
 
 The suite runs against the real PostgreSQL database configured in `DATABASE_URL`.
 
-`scripts/smoke-test.mjs` performs **73 assertions** against the running API when executed, covering:
+`scripts/smoke-test.mjs` performs **78 assertions** against the running API when executed, covering:
 
 1. Authentication — health readiness, 401s for anonymous access, wrong-password rejection,
    HttpOnly cookie session refresh, all four roles signing in, no JWT/password hashes in JSON responses,
-   logout clearing the session.
+   logout clearing the session, `Cache-Control: no-store` on authenticated responses, and the local
+   reset-token helper being unreachable unless explicitly enabled.
 2. Backend authorization — vendor and manager blocked (403) from vendor writes, manager read
    access, vendor-scoped reads, cross-vendor access denied, and global vendor metadata restricted.
 3. Vendor management — 422 validation with field errors, create with `VND-###` code, duplicate
@@ -256,11 +258,11 @@ The suite runs against the real PostgreSQL database configured in `DATABASE_URL`
    with the new password.
 6. Scope guard — Week 2–4 endpoints (`/rfqs`, `/quotations`, `/approvals`, `/purchase-orders`,
    `/invoices`, `/reports`, `/activity`) are not exposed.
-7. Persistence — created vendors survive into a new session, and deletion is permanent.
-
-Note: the smoke test registers a throwaway vendor account. Only if the configured database is
-disposable development data, explicitly set `ALLOW_DESTRUCTIVE_SEED=true` before using
-`npm run seed -- --force` to reset it. This command truncates application tables.
+7. Persistence — created vendors survive into a new session, and deletion is permanent.Note: the smoke test registers throwaway accounts under the reserved `@vendorbridge.test` domain.
+Run `npm run db:cleanup-tests` afterwards to delete only those records; seeded demo data and real
+vendor records are never touched. Only if the configured database is disposable development data,
+explicitly set `ALLOW_DESTRUCTIVE_SEED=true` before using `npm run seed -- --force` to reset it.
+That command truncates application tables and should not be used on shared data.
 
 Front-end type-checking runs as part of `npm run build` (`tsc -b`).
 
@@ -298,7 +300,14 @@ and short motion that respects `prefers-reduced-motion`.
 - **Email delivery**: password-reset links are dispatched through Resend when `RESEND_API_KEY` is
   set (sender configurable via `EMAIL_FROM`). Without a provider configured, development runs
   write the message to a local mail outbox (`.mail-outbox.jsonl`). Production must configure
-  `RESEND_API_KEY` and `CLIENT_ORIGIN`; direct reset-token lookup is disabled in production.
+  `RESEND_API_KEY` and `CLIENT_ORIGIN`. The optional `/api/auth/dev-reset-link` helper returns a
+  live token, so it is disabled unless `ALLOW_DEV_RESET_LINK=true` **and** `NODE_ENV` is not
+  `production`; the sign-in UI only renders its local helper when the server reports it enabled.
+- **Dependency audit**: `npm audit --omit=dev` reports the Prisma CLI's `deepmerge-ts` advisory
+  (high). The fix is a Prisma 7 upgrade, which was not applied without approval.
+- **Neon connection resets**: the managed database occasionally drops an idle connection, which
+  surfaces as a 503 `database_unavailable` on the first request after the drop; retrying the same
+  action succeeds. The API returns an explicit error instead of fabricating data.
 - **Role provisioning**: public registration is limited to Vendor accounts. Procurement and Manager
   accounts must be provisioned outside public sign-up; there is no admin invitation UI or email
   verification workflow in Week 1.
@@ -308,7 +317,10 @@ and short motion that respects `prefers-reduced-motion`.
 - **Database hosting**: the API needs a reachable PostgreSQL instance; there is no embedded or
   offline fallback. The current database is a managed Neon instance whose connection string lives
   in `.env`, so it must be provisioned before the app can start.
-- **Automated UI tests**: none yet — verification is the API smoke suite plus a browser walkthrough.
+- **Automated UI tests**: none yet. Verification is the 78-check API suite plus a manual browser
+  walkthrough (Chrome at 1440×900 and 390×844) covering registration, login/logout, route
+  protection, dashboard, vendor create/update/delete, search, filters, sorting, pagination and
+  empty/error states.
 - **Deployment**: no hosted URL; run locally with `npm run dev` or `npm start`.
 - **Bundle size**: route-level code splitting (`React.lazy` + `<Suspense>`) builds one chunk per
   page, so users only download the code for the route they visit.
@@ -330,9 +342,9 @@ and short motion that respects `prefers-reduced-motion`.
 | Vendor management restricted to authorized roles | ✅ |
 | README with setup, configuration, run instructions | ✅ this file |
 | Screenshots of authentication, dashboard and vendor management | ✅ 9 screens in `docs/screenshots/` |
-| Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) |
-| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `main` |
-| PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema and 73 API checks are defined |
+| Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) — features, commands actually run, audit findings and limitations |
+| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `arena/90eb331b-vendorbridge-kagnus` |
+| PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema; 78 API checks pass against it |
 
 ### Getting the code
 

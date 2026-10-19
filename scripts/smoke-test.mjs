@@ -53,7 +53,12 @@ function client() {
         json = null;
       }
     }
-    return { status: response.status, body: json, sessionCookieHttpOnly };
+    return {
+      status: response.status,
+      body: json,
+      sessionCookieHttpOnly,
+      cacheControl: response.headers.get("cache-control"),
+    };
   };
 }
 
@@ -98,6 +103,17 @@ async function main() {
   check("anonymous /dashboard returns 401", (await anon("GET", "/dashboard")).status === 401);
   check("anonymous /auth/me returns 401", (await anon("GET", "/auth/me")).status === 401);
 
+  const capabilities = await anon("GET", "/auth/capabilities");
+  check(
+    "auth capabilities are readable without a session",
+    capabilities.status === 200 && typeof capabilities.body?.devResetLink === "boolean",
+  );
+  const devResetLink = await anon("GET", "/auth/dev-reset-link?email=admin@vendorbridge.dev");
+  check(
+    "local reset-token helper is unavailable unless explicitly enabled",
+    capabilities.body?.devResetLink !== false || devResetLink.status === 404,
+  );
+
   const badLogin = await anon("POST", "/auth/login", {
     email: "procurement@vendorbridge.dev",
     password: "wrong-password",
@@ -118,6 +134,11 @@ async function main() {
 
   const { call: admin, result: adminLogin } = await login("admin@vendorbridge.dev", "Admin@123");
   check("admin can sign in", adminLogin.status === 200);
+  const adminDashboard = await admin("GET", "/dashboard");
+  check(
+    "authenticated dashboard responses are marked no-store",
+    adminDashboard.status === 200 && adminDashboard.cacheControl === "no-store",
+  );
   const { call: manager, result: managerLogin } = await login("manager@vendorbridge.dev", "Manager@123");
   check("manager can sign in", managerLogin.status === 200);
   const { call: vendor, result: vendorLogin } = await login("vendor@vendorbridge.dev", "Vendor@123");

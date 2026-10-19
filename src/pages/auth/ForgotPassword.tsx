@@ -20,7 +20,17 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ForgotResponse | null>(null);
   const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
+  const [devHelpersEnabled, setDevHelpersEnabled] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // The server only exposes the local-development reset helper when it is
+  // explicitly enabled; check before rendering or calling it.
+  useEffect(() => {
+    api
+      .get<{ devResetLink: boolean }>("/auth/capabilities")
+      .then((caps) => setDevHelpersEnabled(Boolean(caps?.devResetLink)))
+      .catch(() => setDevHelpersEnabled(false));
+  }, []);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -33,16 +43,18 @@ export default function ForgotPassword() {
     try {
       const response = await api.post<ForgotResponse>("/auth/forgot-password", { email: email.trim() });
       setResult(response);
-      try {
-        const dev = await api.get<{ resetUrl: string }>(
-          "/auth/dev-reset-link",
-          { email: email.trim() }
-        );
-        if (dev?.resetUrl) {
-          setDevResetUrl(dev.resetUrl);
+      if (devHelpersEnabled) {
+        try {
+          const dev = await api.get<{ resetUrl: string }>(
+            "/auth/dev-reset-link",
+            { email: email.trim() }
+          );
+          if (dev?.resetUrl) {
+            setDevResetUrl(dev.resetUrl);
+          }
+        } catch {
+          // If external email provider is active or lookup failed, continue gracefully
         }
-      } catch {
-        // If external email provider is active or lookup failed, continue gracefully
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : errorMessage(err));

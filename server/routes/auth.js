@@ -233,8 +233,20 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
 
 // Development helper: enables browser users to receive/click the reset link
 // without requiring an active third-party transactional email service.
+//
+// This endpoint hands out a live reset token to any caller who knows an email
+// address, so it is opt-in: it stays not-found unless ALLOW_DEV_RESET_LINK is
+// explicitly "true" *and* the process is not running in production.
+const devResetLinkEnabled =
+  process.env.NODE_ENV !== "production" && process.env.ALLOW_DEV_RESET_LINK === "true";
+
+// Lets the sign-in UI decide whether to render its local-development helpers.
+router.get("/capabilities", (_req, res) => {
+  res.json({ devResetLink: devResetLinkEnabled });
+});
+
 router.get("/dev-reset-link", async (req, res) => {
-  if (process.env.NODE_ENV === "production") {
+  if (!devResetLinkEnabled) {
     throw new ApiError(404, "API route not found.", { code: "not_found" });
   }
 
