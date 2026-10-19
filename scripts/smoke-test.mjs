@@ -27,6 +27,7 @@ function section(title) {
 function client() {
   let cookie = "";
   return async function call(method, path, body) {
+    let sessionCookieHttpOnly = false;
     const response = await fetch(`${BASE}/api${path}`, {
       method,
       headers: {
@@ -38,7 +39,10 @@ function client() {
     const setCookies = response.headers.getSetCookie?.() ?? [];
     if (setCookies.length > 0) {
       const sessionCookie = setCookies.find((value) => value.startsWith("vb_token="));
-      if (sessionCookie) cookie = sessionCookie.split(";")[0];
+      if (sessionCookie) {
+        cookie = sessionCookie.split(";")[0];
+        sessionCookieHttpOnly = /;\s*httponly\b/i.test(sessionCookie);
+      }
     }
     const text = await response.text();
     let json = null;
@@ -49,7 +53,7 @@ function client() {
         json = null;
       }
     }
-    return { status: response.status, body: json };
+    return { status: response.status, body: json, sessionCookieHttpOnly };
   };
 }
 
@@ -88,6 +92,8 @@ async function main() {
 
   section("1. Authentication and session handling");
   const anon = client();
+  const health = await anon("GET", "/health");
+  check("health reports the API and database are ready", health.status === 200 && health.body?.database === "connected");
   check("anonymous /vendors returns 401", (await anon("GET", "/vendors")).status === 401);
   check("anonymous /dashboard returns 401", (await anon("GET", "/dashboard")).status === 401);
   check("anonymous /auth/me returns 401", (await anon("GET", "/auth/me")).status === 401);
@@ -103,6 +109,8 @@ async function main() {
     "Procure@123",
   );
   check("procurement officer can sign in", procurementLogin.status === 200);
+  check("session cookie is HttpOnly", procurementLogin.sessionCookieHttpOnly);
+  check("session JWT is not exposed in the JSON response", !Object.hasOwn(procurementLogin.body || {}, "token"));
   check("session payload hides password hashes", !JSON.stringify(procurementLogin.body).includes("password_hash"));
   check("procurement role is returned", procurementLogin.body?.user?.role === "procurement");
   const me = await procurement("GET", "/auth/me");
@@ -123,6 +131,8 @@ async function main() {
     phone: "+91 80 4000 1111",
   });
   check("vendor cannot create vendors (403)", vendorCreate.status === 403);
+  const vendorMeta = await vendor("GET", "/vendors/meta");
+  check("vendor cannot read company-wide vendor metadata", vendorMeta.status === 403);
   const managerCreate = await manager("POST", "/vendors", {
     name: `Forbidden Supplies ${stamp}`,
     category: "General",
@@ -227,6 +237,10 @@ async function main() {
   check("internal dashboard scope is returned", dashboard.body?.scope === "internal");
   check("dashboard reports active vendors", (dashboard.body?.statusCounts?.Active ?? 0) > 0);
   check(
+    "status counts reconcile with total suppliers",
+    Object.values(dashboard.body?.statusCounts || {}).reduce((sum, count) => sum + count, 0) === dashboard.body?.totalVendors,
+  );
+  check(
     "category counts reconcile with the register",
     dashboard.body?.categoryCounts?.reduce((sum, item) => sum + item.count, 0) === dashboard.body?.totalVendors,
   );
@@ -235,6 +249,18 @@ async function main() {
   const vendorDashboard = await vendor("GET", "/dashboard");
   check("vendor dashboard scope is returned", vendorDashboard.body?.scope === "vendor");
   check("vendor dashboard exposes their own profile", vendorDashboard.body?.vendor?.name === "Nova Office Supplies");
+  check(
+    "vendor dashboard metrics are limited to their own profile",
+    vendorDashboard.body?.totalVendors === 1 &&
+      Object.values(vendorDashboard.body?.statusCounts || {}).reduce((sum, count) => sum + count, 0) === 1 &&
+      vendorDashboard.body?.categoryCounts?.reduce((sum, item) => sum + item.count, 0) === 1 &&
+      !Object.hasOwn(vendorDashboard.body || {}, "recentVendors"),
+  );
+  check("vendor dashboard hides internal notes", vendorDashboard.body?.vendor?.notes === null);
+  check(
+    "vendor API hides internal notes",
+    vendorList.body?.items?.length === 1 && vendorList.body.items.every((item) => item.notes === null),
+  );
 
   section("5. Registration and password reset");
   const anonB = client();
@@ -261,12 +287,28 @@ async function main() {
     category: "General",
   });
   check("vendor registration succeeds with a session", registered.status === 201 && Boolean(registered.body?.user));
-  check("vendor registration returns a session cookie", Boolean(registered.body?.token));
+  check("vendor registration returns an HttpOnly session cookie", registered.sessionCookieHttpOnly);
   const newVendorProfile = await anonB("GET", "/vendors");
   check("vendor registration creates a pending vendor profile", newVendorProfile.body?.items?.[0]?.status === "Pending");
   check(
     "registered vendor is linked to the new account",
     newVendorProfile.body?.items?.[0]?.name === `New Vendor ${stamp}`,
+  );
+
+  const forgedManagerSignup = await client()("POST", "/auth/register", {
+    firstName: "Forged",
+    lastName: "Manager",
+    email: `forgedmanager${stamp}@vendorbridge.test`,
+    phone: "+91 90000 00002",
+    role: "manager",
+    country: "India",
+    password: "Vendor@2026",
+    companyName: `Forged Manager ${stamp}`,
+    category: "General",
+  });
+  check(
+    "public signup ignores client-supplied privileged roles",
+    forgedManagerSignup.status === 201 && forgedManagerSignup.body?.user?.role === "vendor",
   );
 
   const duplicateEmail = await client()("POST", "/auth/register", {

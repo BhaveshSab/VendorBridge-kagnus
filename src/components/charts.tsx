@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { formatNumber } from "../lib/format";
 
 const DONUT_COLORS = [
@@ -30,7 +31,7 @@ export function DonutChart({
             const percent = (segment.value / total) * 100;
             const dash = `${Math.max(0, percent)} ${100 - Math.max(0, percent)}`;
             const circle = (
-              <circle
+              <motion.circle
                 key={segment.label}
                 cx="21"
                 cy="21"
@@ -38,10 +39,11 @@ export function DonutChart({
                 fill="none"
                 stroke={DONUT_COLORS[index % DONUT_COLORS.length]}
                 strokeWidth="6"
-                strokeDasharray={dash}
+                initial={{ strokeDasharray: "0 100" }}
+                animate={{ strokeDasharray: dash }}
+                transition={{ duration: 0.8, delay: index * 0.08, ease: "easeOut" }}
                 strokeDashoffset={-offset}
                 strokeLinecap="round"
-                className="transition-all duration-500 ease-out"
               />
             );
             offset += percent;

@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthLayout } from "../../components/AuthLayout";
@@ -6,13 +6,6 @@ import { Button, Field, Input } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { errorMessage } from "../../lib/api";
-
-const DEMO_ACCOUNTS = [
-  { role: "Procurement Officer", email: "procurement@vendorbridge.dev", password: "Procure@123", badge: "bg-blue-50 text-blue-700 border-blue-200" },
-  { role: "Manager/Approver", email: "manager@vendorbridge.dev", password: "Manager@123", badge: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  { role: "Vendor", email: "vendor@vendorbridge.dev", password: "Vendor@123", badge: "bg-amber-50 text-amber-700 border-amber-200" },
-  { role: "Admin", email: "admin@vendorbridge.dev", password: "Admin@123", badge: "bg-purple-50 text-purple-700 border-purple-200" },
-];
 
 export default function Login() {
   const { login } = useAuth();
@@ -26,8 +19,6 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  const [showDemo, setShowDemo] = useState(true);
-  const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -137,63 +128,6 @@ export default function Login() {
         </p>
       </form>
 
-      {/* Demo Credentials Helper */}
-      <div className="mt-5">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between rounded-xl border border-slate-200/80 bg-white/80 backdrop-blur-sm px-4 py-2.5 text-[12px] font-bold text-ink-soft transition-all hover:border-blue-300 hover:text-brand-700 shadow-xs"
-          onClick={() => setShowDemo((value) => !value)}
-          aria-expanded={showDemo}
-        >
-          <span className="flex items-center gap-2">
-            <Sparkles size={14} className="text-amber-500" />
-            Quick Demo Accounts
-          </span>
-          <span className="text-[11px] font-semibold text-muted">{showDemo ? "Hide shortcuts" : "Show shortcuts"}</span>
-        </button>
-
-        {showDemo ? (
-          <div className="mt-2.5 grid gap-2">
-            {DEMO_ACCOUNTS.map((account) => {
-              const isSelected = selectedDemo === account.role;
-              return (
-                <button
-                  key={account.email}
-                  type="button"
-                  onClick={() => {
-                    setEmail(account.email);
-                    setPassword(account.password);
-                    setSelectedDemo(account.role);
-                    setFieldErrors({});
-                    setError(null);
-                  }}
-                  className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-left transition-all ${
-                    isSelected
-                      ? "border-brand-500 bg-brand-50/70 shadow-xs ring-2 ring-brand-500/20"
-                      : "border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/60"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border ${account.badge}`}>
-                        {account.role}
-                      </span>
-                      {isSelected ? <span className="text-[10px] font-bold text-brand-600 flex items-center gap-0.5"><Check size={11} /> Selected</span> : null}
-                    </div>
-                    <span className="mt-1 block truncate text-[11px] font-medium text-muted">{account.email}</span>
-                  </div>
-                  <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 font-mono text-[10px] font-bold text-slate-700 border border-slate-200">
-                    {account.password}
-                  </span>
-                </button>
-              );
-            })}
-            <p className="px-1 text-[11px] leading-relaxed text-muted">
-              Click any role card to prefill the login form instantly.
-            </p>
-          </div>
-        ) : null}
-      </div>
     </AuthLayout>
   );
 }

@@ -1,7 +1,8 @@
 import { ArrowLeft, ArrowRight, Check, Copy, ExternalLink, KeyRound, MailCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AuthLayout } from "../../components/AuthLayout";
+import { useAuth } from "../../context/AuthContext";
 import { Button, Field, Input } from "../../components/ui";
 import { api, ApiError, errorMessage } from "../../lib/api";
 
@@ -10,7 +11,11 @@ interface ForgotResponse {
 }
 
 export default function ForgotPassword() {
+  const { user } = useAuth();
   const [email, setEmail] = useState("");
+  useEffect(() => {
+    if (user?.email) setEmail((current) => current || user.email);
+  }, [user?.email]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ForgotResponse | null>(null);

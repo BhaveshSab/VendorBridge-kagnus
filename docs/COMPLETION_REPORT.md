@@ -2,99 +2,86 @@
 
 **Project:** VendorBridge — Procurement & Vendor Management ERP
 **Milestone:** Week 1 — Foundation & Vendor Management
-**Status:** Complete for all three Week 1 deliverables. Weeks 2–4 are deliberately out of scope.
+**Status:** Frontend build and static checks pass. Database-backed end-to-end verification remains pending in this workspace.
 
 ---
 
 ## 1. Implemented features
 
-### Authentication
-- Registration with per-field validation (name, email, phone, role, country, password strength); a vendor sign-up automatically creates a linked **Pending** vendor profile.
-- Email + password login, logout and session restore through a signed JWT in an httpOnly cookie (8 h expiry, `sameSite=lax`).
-- Forgot-password → single-use, 30-minute reset token → password reset.
-- Login throttling (10 attempts per IP + email in 15 minutes → 429).
-- Four roles: **Admin, Procurement Officer, Manager/Approver, Vendor**.
-- All API routes guarded server-side (`requireAuth` / `requireRole`); the UI route guard only handles navigation, never authorization.
-- React route guards redirect unauthenticated visitors to `/login` and keep signed-in users out of the auth screens.
+### Authentication and authorization
+- Public registration is backend-forced to the **Vendor** role and creates a linked **Pending** vendor profile.
+- Sign-in, sign-out and session restoration use a signed JWT in an `httpOnly` cookie. The JWT is not returned in JSON.
+- Password recovery uses single-use, expiring reset tokens; production delivery requires configured email service credentials.
+- Protected UI routes and API routes require authentication. Vendor writes and other restricted operations are checked on the backend.
+- Vendor sessions do not receive internal procurement notes or company-wide dashboard/vendor metadata.
 
 ### Dashboard
-- Role-aware greeting and role label; the four summary cards from the design reference.
-- Live **Active vendors** count; **Active RFQs**, **Pending approvals** and **PO value** show explicit
-  "Available in Week 2/3" placeholders because those modules do not exist yet.
-- Quick actions: add vendor, open vendor register, and a disabled "Create an RFQ" labelled *Week 2*.
-- Vendor register snapshot (five most recently updated vendors) with status chips.
-- Vendor status donut and vendor-by-category breakdown computed from stored records.
-- "Scheduled for later weeks" card describing the Week 2, Week 3 and Week 4 scope.
-- Skeleton loaders, empty states and an error state with retry. Vendors see their own profile instead
-  of the internal register.
+- `/api/dashboard` reads supplier records from PostgreSQL and returns `totalVendors`, status counts, category counts and the latest five vendors for internal roles.
+- The dashboard displays the live total-suppliers metric, vendor status donut, category bars and recent supplier snapshot from that response.
+- Vendor accounts receive only their own profile and scoped metrics; their response contains no global totals or recent-vendor list.
+- React Query revalidates API-backed data on page mounts and window focus. Loading, empty and API-error states are present.
+- RFQ, approval and purchase-order metrics remain explicit placeholders because those APIs are not in scope for this milestone.
 
 ### Vendor management
-- Create, list, view, update and delete vendors (Admin and Procurement Officer only).
-- Fields: name, category, GSTIN, contact person, email, phone, address, city, country, status,
-  rating and internal notes.
-- Server-side search, status and category filters, five sort orders and pagination.
-- Detail drawer with contact, billing details, compliance and record metadata.
-- Unique vendor code (`VND-###`), duplicate-name protection (409), Zod validation with per-field
-  messages (422).
-- Vendors can read only their own record; all other vendor endpoints return 403.
-- Data persists in PostgreSQL (managed instance, Prisma ORM) across refreshes, restarts and new sessions.
+- Authorized staff can create, view, update, delete, search, filter, sort and paginate supplier records.
+- Vendors can read only their own profile. Global metadata is restricted to internal roles, and internal notes are redacted from vendor-facing responses.
+- Input validation, duplicate-name protection, role checks and database persistence are implemented.
 
-### Explicitly out of scope
-RFQs, quotations, comparison, approvals, purchase orders, invoices, reports and the audit log are
-**not implemented**. Their API routes return 404, their navigation entries are absent, and the
-dashboard shows placeholder empty states instead of fabricated data.
+### Database and seeding
+- Prisma migrations define the PostgreSQL schema.
+- `npm run db:setup` generates the Prisma Client, applies migrations, seeds an empty development database and prints aggregate row counts.
+- Seeding is explicit, does not run when the server starts, skips databases that already contain users or vendors, and is disabled in production. Destructive reseeding requires an explicit environment opt-in.
+- `npm run db:status` checks connectivity/schema and prints row counts without exposing record contents.
 
 ---
 
-## 2. Tests performed
+## 2. Verification performed in this workspace
 
 | Check | Result |
 | --- | --- |
-| `npm run typecheck` | Pass (no TypeScript errors) |
-| `npm run build` | Pass (production bundle built into `dist/`) |
-| `npm run test:api` | **64 / 64 assertions pass** against PostgreSQL (Prisma) |
-| Browser walkthrough (1440 px + 390 px) | Login, registration, dashboard, vendor create/edit/delete, search and filters, drawer, profile, mobile layout |
-| Removed-route check | `/rfqs` renders the not-found screen; `/api/rfqs` returns 404 |
-| Automated screenshot run (`npm run screenshots`) | 9 screens captured from the live app into `docs/screenshots/` |
+| `npm run typecheck` | Pass |
+| `npm run build` | Pass |
+| `node --check` for API, seed, and smoke-test scripts | Pass |
+| `git diff --check` | Pass |
+| Vite frontend on port 5173 | Responds successfully |
+| API on port 4000 | Not running in this workspace; dashboard proxy request returned HTTP 500 |
+| `npm run test:api` | Not run: no `.env`, generated Prisma Client, or reachable database/API is configured here |
+| Browser end-to-end walkthrough | Not run in this workspace |
+| `npm audit --omit=dev` | Reports 3 high-severity findings through Prisma tooling / `deepmerge-ts`; the suggested fix requires a breaking Prisma major upgrade, so dependencies were not changed |
 
-The API suite covers anonymous 401s, wrong-password rejection, cookie session refresh, all four
-roles, vendor and manager role denials (403), vendor-scoped reads, cross-vendor access denial,
-validation (422), duplicate-name conflict (409), create/update/delete, search, status and category
-filters, pagination, invalid filter rejection, the dashboard contract, vendor registration creating
-a Pending profile, duplicate email conflict, reset-token issuance and single use, logout, endpoint
-scope and persistence across sessions.
+The API smoke-test script now defines **73 assertions**, including dashboard count reconciliation, health readiness, role restrictions, vendor data scoping, internal-note redaction and JWT non-disclosure. Those assertions have **not** been executed against a live database in this workspace. A separately configured local database is not attached to this checkout.
 
-Reproduce:
+To run the database-backed checks in the configured local environment:
 
 ```bash
-npm install
-npm run seed -- --force
-npm start            # http://localhost:4000
-npm run test:api     # in a second terminal
+npm run db:status
+npm run dev:server
+# in another terminal
+npm run test:api
 ```
+
+A successful `/api/health` response includes `"database":"connected"`. `/api/dashboard` requires a signed-in session; use an internal test account to verify aggregate metrics and a Vendor account to verify profile-only metrics.
 
 ---
 
-## 3. Known limitations
+## 3. Security notes and known limitations
 
-- **Email delivery** — password-reset links are dispatched through Resend when `RESEND_API_KEY` is configured; without a provider, development runs write the message to a local mail outbox (`.mail-outbox.jsonl`). Reset tokens are never returned in API responses.
-- **Role selection at sign-up** — public registration lets a user choose Procurement/Approver/Vendor; there is no admin verification step in Week 1.
-- **Weeks 2–4** — procurement workflow, document generation, reports and audit trail are intentionally not built.
-- **Database hosting** — PostgreSQL must be reachable at `DATABASE_URL`; there is no embedded or offline fallback. The schema is versioned in `prisma/migrations/` and applied with `npm run db:deploy`.
-- **Automated UI tests** — none; UI verification is a browser walkthrough plus the API suite.
-- **Deployment** — no hosted URL; the app runs locally with `npm run dev` or `npm start`.
-- **Bundle size** — route-level code splitting (`React.lazy` + `<Suspense>`) builds one chunk per page, so each route loads only its own code.
+- **Credential handling:** keep database URLs and JWT secrets in the ignored local `.env`; rotate any credentials that may have been exposed. No database secret is committed to this branch.
+- **Dependency audit:** three high-severity findings remain in Prisma-related tooling / `deepmerge-ts`. The available automated remediation would make a breaking Prisma major upgrade; no dependency override or upgrade was applied.
+- **Seed data:** demo accounts and supplier fixtures are server-side development fixtures only. Do not seed them into production.
+- **Workflow scope:** RFQs, quotations, approvals, purchase orders, invoices, reports and audit history are intentionally not implemented; their API routes are not available.
+- **Testing scope:** live API tests and a full browser walkthrough still need to be run against the user's configured database because this workspace has no `.env`, generated Prisma Client or API process.
+- **Email delivery:** password-reset email requires configured Resend credentials in production. Local development uses the mail outbox helper.
 
 ---
 
 ## 4. Submission artefacts
 
-| Artefact | Location |
+| Artefact | Location / status |
 | --- | --- |
-| GitHub repository | https://github.com/BhaveshSab/VendorBridge-kagnus (branch `main`) |
-| Source code | `src/` (front end), `server/` (API), `prisma/` (schema + migrations), `scripts/` (tests, screenshots) |
-| Setup and configuration | [README.md](../README.md) §1–§3 |
-| Demo accounts | [README.md](../README.md) §3 |
-| Screenshots | `docs/screenshots/` (9 screens) |
-| Demo data | recreated with `npm run seed -- --force` |
-| API and architecture reference | [README.md](../README.md) §5–§6 |
+| Source | `src/`, `server/`, `prisma/`, `scripts/` |
+| Setup, API and configuration guide | [README.md](../README.md) |
+| API smoke tests | `scripts/smoke-test.mjs` (73 assertions defined; live run pending) |
+| Database status utility | `scripts/db-status.js` |
+| Screenshots | Existing captures under `docs/screenshots/`; not regenerated in this verification pass |
+| Current working branch | `arena/90eb331b-vendorbridge-kagnus` (not pushed by this verification pass) |

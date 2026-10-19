@@ -9,7 +9,7 @@ export function roleLabel(role) {
   );
 }
 
-export function vendorOut(vendor) {
+export function vendorOut(vendor, { includeInternalNotes = true } = {}) {
   if (!vendor) return null;
   return {
     id: vendor.id,
@@ -25,7 +25,7 @@ export function vendorOut(vendor) {
     contactName: vendor.contactName,
     status: vendor.status,
     rating: vendor.rating,
-    notes: vendor.notes,
+    notes: includeInternalNotes ? vendor.notes : null,
     userId: vendor.userId,
     createdAt: vendor.createdAt.toISOString(),
     updatedAt: vendor.updatedAt.toISOString(),

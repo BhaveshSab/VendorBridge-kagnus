@@ -14,9 +14,11 @@ import "./index.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Serve cached pages instantly on navigation; re-fetch in the
-      // background once data is older than 30 seconds.
-      staleTime: 30_000,
+      // Revalidate API-backed data on every page mount and when the tab regains
+      // focus; cached data can remain visible while the fresh response loads.
+      staleTime: 0,
+      refetchOnMount: "always",
+      refetchOnWindowFocus: "always",
       gcTime: 5 * 60_000,
       retry: (failureCount, error) => {
         if (error instanceof ApiError && error.status > 0 && error.status < 500) return false;

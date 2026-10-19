@@ -4,23 +4,35 @@ import path from "node:path";
 import cookieParser from "cookie-parser";
 import express from "express";
 import { ApiError, authenticateOptional } from "./auth.js";
-import { projectRoot } from "./db.js";
+import { prisma, projectRoot } from "./db.js";
 import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import vendorRoutes from "./routes/vendors.js";
 import { ensureDatabase } from "./ensureDb.js";
-import { seed } from "./seed.js";
 
 await ensureDatabase();
-await seed();
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const isProduction = process.env.NODE_ENV === "production";
 
+function isDatabaseUnavailable(error) {
+  return (
+    error?.name === "PrismaClientInitializationError" ||
+    error?.name === "PrismaClientRustPanicError" ||
+    /^P10\d\d$/.test(String(error?.code || "")) ||
+    ["P2021", "P2022", "P2024"].includes(error?.code)
+  );
+}
+
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
+app.use("/api", (_req, res, next) => {
+  // Authenticated vendor and dashboard responses should never enter shared caches.
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -47,8 +59,29 @@ app.use((req, res, next) => {
 
 app.use(authenticateOptional);
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "vendorbridge-api", time: new Date().toISOString() });
+app.get("/api/health", async (_req, res) => {
+  try {
+    // Check the tables this app requires without exposing record counts.
+    await Promise.all([
+      prisma.user.findFirst({ select: { id: true } }),
+      prisma.vendor.findFirst({ select: { id: true } }),
+    ]);
+    res.json({
+      ok: true,
+      service: "vendorbridge-api",
+      database: "connected",
+      time: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (!isDatabaseUnavailable(error)) throw error;
+    res.status(503).json({
+      ok: false,
+      service: "vendorbridge-api",
+      database: "unavailable",
+      error: { message: "Database connection or schema is not ready.", code: "database_unavailable" },
+      time: new Date().toISOString(),
+    });
+  }
 });
 
 app.use("/api/auth", authRoutes);
@@ -85,6 +118,16 @@ app.use((error, req, res, _next) => {
   if (error instanceof ApiError) {
     res.status(error.status).json({
       error: { message: error.message, code: error.code, fields: error.fields || undefined },
+    });
+    return;
+  }
+  if (isDatabaseUnavailable(error)) {
+    console.error(`[db] ${error.code || error.name || "database error"}`);
+    res.status(503).json({
+      error: {
+        message: "Database connection or schema is not ready. Check DATABASE_URL and run npm run db:deploy.",
+        code: "database_unavailable",
+      },
     });
     return;
   }

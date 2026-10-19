@@ -57,17 +57,27 @@ export function readToken(req) {
 
 export async function authenticateOptional(req, _res, next) {
   const token = readToken(req);
-  if (token) {
-    try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      const user = await prisma.user.findUnique({ where: { id: Number(payload.sub) } });
-      if (user) {
-        req.user = publicUser(user);
-        req.userRow = user;
-      }
-    } catch {}
+  if (!token) return next();
+
+  let payload;
+  try {
+    payload = jwt.verify(token, JWT_SECRET);
+  } catch {
+    // A missing, expired or malformed token is anonymous; database failures
+    // below are different and must reach the API error handler.
+    return next();
   }
-  next();
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: Number(payload.sub) } });
+    if (user) {
+      req.user = publicUser(user);
+      req.userRow = user;
+    }
+    return next();
+  } catch (error) {
+    return next(error);
+  }
 }
 
 export function requireAuth(req, _res, next) {

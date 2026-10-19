@@ -56,6 +56,10 @@ export async function sendPasswordResetEmail({ to, name, resetUrl }) {
     return { provider: "resend" };
   }
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("RESEND_API_KEY is required in production to deliver password reset emails.");
+  }
+
   const entry = {
     to,
     name: name ?? null,

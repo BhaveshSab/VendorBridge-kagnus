@@ -32,9 +32,9 @@ npm install
 # 2. Configure environment
 cp .env.example .env      # set DATABASE_URL (PostgreSQL) and JWT_SECRET
 
-# 3. Apply the database schema and seed demo data
-npm run db:deploy
-npm run seed
+# 3. Generate Prisma Client, apply migrations, seed an empty development DB,
+#    and verify connection/table counts (review DATABASE_URL first)
+npm run db:setup
 
 # 4. Run the API (port 4000) and the Vite dev server (port 5173) together
 npm run dev
@@ -52,27 +52,26 @@ Other scripts:
 | `npm run db:generate` | Regenerate the Prisma Client after editing the schema |
 | `npm run db:migrate` | Create and apply a development migration (`prisma migrate dev`) |
 | `npm run db:deploy` | Apply committed migrations to an existing database |
+| `npm run db:status` | Check database connectivity and print row counts (no record contents) |
+| `npm run db:setup` | Generate Prisma Client, apply migrations, seed an empty development DB and verify counts |
 | `npm run db:studio` | Open Prisma Studio against the configured database |
-| `npm run seed` | Re-seed (add `-- --force` to wipe and reseed) |
-| `npm run test:api` | 64-check end-to-end API smoke test (see §7) |
+| `npm run seed` | Add the demo fixture only when both users and vendors tables are empty; never overwrites existing data |
+| `npm run test:api` | 73-check end-to-end API smoke test (see §7) |
 | `npm run screenshots` | Regenerate the screenshots in `docs/screenshots/` (needs the app running) |
 | `npm run typecheck` | TypeScript check |
 
-The server also seeds 4 demo users and 16 vendors across 8 categories automatically when the
-`users` table is empty, so a freshly migrated database is immediately usable.
+Demo data is loaded only by the explicit development `npm run seed` command (also included in
+`npm run db:setup`) and only when both the `users` and `vendors` tables are empty. The server does
+not seed data on startup, and demo seeding is disabled in production. Do not use demo credentials
+or fixtures in a production database.
 
 ---
 
 ## 3. Demo accounts
 
-| Role | Email | Password | What they can do |
-| --- | --- | --- | --- |
-| Admin | `admin@vendorbridge.dev` | `Admin@123` | Full vendor management plus every read view |
-| Procurement Officer | `procurement@vendorbridge.dev` | `Procure@123` | Create, update, delete and search vendors |
-| Manager/Approver | `manager@vendorbridge.dev` | `Manager@123` | Read-only access to the vendor register and dashboard |
-| Vendor | `vendor@vendorbridge.dev` | `Vendor@123` | View and maintain only their own vendor profile |
-
-The sign-in screen lists these accounts as clickable shortcuts (one click prefills the form).
+In a disposable development database, the server-only seed script creates one account per role
+for smoke testing. Credentials are not bundled into the browser login page. Seed accounts are
+fixtures only; never use them in production.
 
 ---
 
@@ -80,14 +79,17 @@ The sign-in screen lists these accounts as clickable shortcuts (one click prefil
 
 ### 4.1 Authentication (requirement 1)
 
-- Registration with per-field validation (names, email, phone, role, country, password strength).
-- Vendor sign-up automatically creates a linked **Pending** vendor profile, so a vendor account
-  is never orphaned.
+- Public registration validates names, email, phone, country and password, and always creates a
+  **Vendor** account with a linked **Pending** vendor profile. Public clients cannot choose an
+  internal or elevated role.
+- Admin, Procurement and Manager records exist only in the server-side development seed fixture; do
+  not load these demo accounts into production.
 - Email + password login, logout, and session restore via a signed JWT in an httpOnly cookie
   (8 hour expiry, `sameSite=lax`, `secure` in production).
-- Forgot-password → single-use, 30-minute reset token → password reset. The reset link is
-  delivered by email (Resend when `RESEND_API_KEY` is configured, otherwise a local mail outbox);
-  the token is never included in API responses.
+- Forgot-password → single-use, 30-minute reset token → password reset. Reset emails use Resend
+  when `RESEND_API_KEY` is configured; local development falls back to a mail outbox and a
+  development-only direct-link helper. Configure `CLIENT_ORIGIN` to your public HTTPS app URL
+  in production. Reset tokens are never exposed by production endpoints.
 - Login throttling: 10 attempts per IP + email within 15 minutes returns `429`. Counters are
   stored in Redis (when `REDIS_URL` is set) or PostgreSQL via `express-rate-limit`, so they
   survive restarts and work across multiple Node.js instances.
@@ -95,13 +97,15 @@ The sign-in screen lists these accounts as clickable shortcuts (one click prefil
 - Every API route is guarded server-side (`requireAuth` / `requireRole`). Role restrictions are
   enforced on the backend, not just hidden in the UI.
 - React route guards redirect unauthenticated users to `/login` and keep signed-in users out of
-  the auth screens.
+  login/registration, while recovery pages remain available from Profile and emailed reset links.
 
 ### 4.2 Dashboard (requirement 2)
 
 - Role-aware greeting, role label and the four summary cards from the design reference.
-- **Active vendors** is live from the database; **Active RFQs**, **Pending approvals** and
-  **PO value** display an explicit placeholder because those modules arrive in Weeks 2–3.
+- **Total suppliers**, status totals, recent vendors and category breakdown are fetched from
+  `/api/dashboard` and computed from PostgreSQL. Vendors see only their own profile metrics.
+- **Active RFQs**, **Pending approvals** and **PO value** display explicit placeholders because
+  those APIs/modules are not implemented in this milestone.
 - Quick actions: add a vendor, open the vendor register, and a clearly disabled "Create an RFQ"
   action labelled *Week 2*.
 - Vendor register snapshot (five most recently updated vendors) with status chips.
@@ -120,7 +124,8 @@ The sign-in screen lists these accounts as clickable shortcuts (one click prefil
 - Vendor detail drawer with contact, billing details, compliance, rating and record metadata.
 - Unique vendor code per record (`VND-001`…), duplicate-name protection (`409`) and full
   Zod validation (`422` with per-field messages).
-- Vendors can only read their own record; every other vendor endpoint returns `403`.
+- Vendors can only read their own record; cross-vendor reads and global vendor metadata return `403`.
+- Internal procurement notes are redacted from vendor-facing API responses.
 - Records are stored in PostgreSQL and survive refreshes, restarts and new sessions.
 
 ### 4.4 Technical requirements (requirement 4)
@@ -169,14 +174,15 @@ scripts/
 | `GET` | `/api/auth/me` | Signed in |
 | `POST` | `/api/auth/forgot-password` | Public |
 | `POST` | `/api/auth/reset-password` | Public (needs a valid token) |
-| `GET` | `/api/dashboard` | Signed in (role-aware scope) |
+| `GET` | `/api/auth/dev-reset-link` | Development only (disabled in production) |
+| `GET` | `/api/dashboard` | Admin/Procurement/Manager: aggregate metrics; Vendor: own profile metrics only |
 | `GET` | `/api/vendors` | Signed in (vendors see only themselves) |
-| `GET` | `/api/vendors/meta` | Signed in |
+| `GET` | `/api/vendors/meta` | Admin, Procurement, Manager (vendors are denied global metadata) |
 | `GET` | `/api/vendors/:id` | Signed in (vendors only their own) |
 | `POST` | `/api/vendors` | Admin, Procurement |
 | `PUT` | `/api/vendors/:id` | Admin, Procurement |
 | `DELETE` | `/api/vendors/:id` | Admin, Procurement |
-| `GET` | `/api/health` | Public |
+| `GET` | `/api/health` | Public (API and required database tables readiness; no row counts) |
 
 ### Role permission matrix
 
@@ -190,8 +196,9 @@ scripts/
 
 ## 6. Database
 
-PostgreSQL managed through Prisma ORM. The connection string is read from `DATABASE_URL`; no
-credentials are hard-coded and `.env` is gitignored.
+PostgreSQL managed through Prisma ORM. The connection string is read from `DATABASE_URL`; database
+connection credentials are not hard-coded and `.env` is gitignored. Server-side seed accounts are
+development-only fixtures and must never be loaded into production.
 
 ### Models
 
@@ -214,8 +221,10 @@ npm run db:studio                        # browse data
 ```
 
 Migrations live in `prisma/migrations/` and are part of the repository. The initial migration
-(`init`) creates the four tables, indexes and foreign keys. Demo data is loaded by
-`npm run seed -- --force`, which truncates and re-inserts via Prisma transactions.
+(`init`) creates the core tables, indexes and foreign keys. `npm run seed` inserts the demo fixture
+only into a development database with no users or vendors. It never overwrites existing records.
+A destructive reseed is blocked unless `ALLOW_DESTRUCTIVE_SEED=true` is explicitly set, and is
+never permitted when `NODE_ENV=production`.
 
 ---
 
@@ -229,27 +238,29 @@ npm run test:api     # in another
 
 The suite runs against the real PostgreSQL database configured in `DATABASE_URL`.
 
-`scripts/smoke-test.mjs` performs **64 assertions** against the running API and currently
-passes 64/64, covering:
+`scripts/smoke-test.mjs` performs **73 assertions** against the running API when executed, covering:
 
-1. Authentication — 401s for anonymous access, wrong-password rejection, cookie session refresh,
-   all four roles signing in, no password hashes in responses, logout clearing the session.
+1. Authentication — health readiness, 401s for anonymous access, wrong-password rejection,
+   HttpOnly cookie session refresh, all four roles signing in, no JWT/password hashes in JSON responses,
+   logout clearing the session.
 2. Backend authorization — vendor and manager blocked (403) from vendor writes, manager read
-   access, vendor-scoped reads and cross-vendor access denied.
+   access, vendor-scoped reads, cross-vendor access denied, and global vendor metadata restricted.
 3. Vendor management — 422 validation with field errors, create with `VND-###` code, duplicate
    name conflict (409), update, search, status and category filters, sorting, pagination,
    invalid filter rejection (400), meta endpoint.
-4. Dashboard — internal and vendor scopes, live status counts, category totals reconciling with
-   the register, recent-vendor limit.
-5. Registration and password reset — weak password rejection, vendor sign-up creating a Pending
-   profile, duplicate email conflict, reset token issuance, single-use tokens, password change
-   and sign-in with the new password.
+4. Dashboard — internal and vendor scopes, status/category counts reconciling with supplier
+   totals, recent-vendor limit, and vendor isolation from global counts and internal notes.
+5. Registration and password reset — weak password rejection, public sign-up forced to the Vendor
+   role even when a privileged role is submitted, vendor sign-up creating a Pending profile,
+   duplicate email conflict, reset token issuance, single-use tokens, password change and sign-in
+   with the new password.
 6. Scope guard — Week 2–4 endpoints (`/rfqs`, `/quotations`, `/approvals`, `/purchase-orders`,
    `/invoices`, `/reports`, `/activity`) are not exposed.
 7. Persistence — created vendors survive into a new session, and deletion is permanent.
 
-Note: the smoke test registers a throwaway vendor account. Run `npm run seed -- --force` to
-return to pristine demo data afterwards.
+Note: the smoke test registers a throwaway vendor account. Only if the configured database is
+disposable development data, explicitly set `ALLOW_DESTRUCTIVE_SEED=true` before using
+`npm run seed -- --force` to reset it. This command truncates application tables.
 
 Front-end type-checking runs as part of `npm run build` (`tsc -b`).
 
@@ -286,10 +297,11 @@ and short motion that respects `prefers-reduced-motion`.
 
 - **Email delivery**: password-reset links are dispatched through Resend when `RESEND_API_KEY` is
   set (sender configurable via `EMAIL_FROM`). Without a provider configured, development runs
-  write the message to a local mail outbox (`.mail-outbox.jsonl`). Reset tokens are never returned
-  in API responses; the expiry and single-use logic are real.
-- **Role selection at sign-up**: public registration lets a user pick Procurement/Approver/Vendor;
-  there is no admin approval or email verification step in Week 1.
+  write the message to a local mail outbox (`.mail-outbox.jsonl`). Production must configure
+  `RESEND_API_KEY` and `CLIENT_ORIGIN`; direct reset-token lookup is disabled in production.
+- **Role provisioning**: public registration is limited to Vendor accounts. Procurement and Manager
+  accounts must be provisioned outside public sign-up; there is no admin invitation UI or email
+  verification workflow in Week 1.
 - **Weeks 2–4 are not implemented**: RFQs, quotations, approvals, purchase orders, invoices,
   reports and the audit log are deliberately out of scope. Their dashboard areas show explicit
   empty states instead of fabricated data.
@@ -320,7 +332,7 @@ and short motion that respects `prefers-reduced-motion`.
 | Screenshots of authentication, dashboard and vendor management | ✅ 9 screens in `docs/screenshots/` |
 | Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) |
 | Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `main` |
-| PostgreSQL + Prisma ORM instead of a local database file | ✅ migrated, 64/64 API checks pass against PostgreSQL |
+| PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema and 73 API checks are defined |
 
 ### Getting the code
 
@@ -331,8 +343,7 @@ cd VendorBridge-kagnus
 npm install                 # installs dependencies and generates the Prisma Client
 cp .env.example .env        # set DATABASE_URL (PostgreSQL) and JWT_SECRET
 
-npm run db:deploy           # apply the committed Prisma migrations
-npm run seed                # load demo users and vendors
+npm run db:setup            # generate client, migrate, seed empty dev DB, and show row counts
 npm run dev                 # API on :4000, Vite on :5173
 ```
 

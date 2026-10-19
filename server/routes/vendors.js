@@ -6,7 +6,7 @@ import { nextSequence, now, prisma } from "../db.js";
 import { vendorOut } from "../serializers.js";
 
 const router = Router();
-router.use(requireAuth);
+router.use(requireAuth, requireRole("admin", "procurement", "manager", "vendor"));
 
 const VENDOR_STATUSES = ["Active", "Pending", "Inactive", "Blocked"];
 
@@ -57,7 +57,7 @@ function vendorData(data, extra = {}) {
   };
 }
 
-router.get("/meta", async (_req, res) => {
+router.get("/meta", requireRole("admin", "procurement", "manager"), async (_req, res) => {
   const [categories, total] = await Promise.all([
     prisma.vendor.groupBy({ by: ["category"], _count: { _all: true } }),
     prisma.vendor.count(),
@@ -75,7 +75,7 @@ router.get("/", async (req, res) => {
   if (req.user.role === "vendor") {
     const vendor = await currentVendorFor(req.user);
     res.json({
-      items: vendor ? [vendorOut(vendor)] : [],
+      items: vendor ? [vendorOut(vendor, { includeInternalNotes: false })] : [],
       total: vendor ? 1 : 0,
       page: 1,
       pageSize: 1,
@@ -134,7 +134,9 @@ router.get("/:id", async (req, res) => {
   if (req.user.role === "vendor" && vendor.userId !== req.user.id) {
     throw new ApiError(403, "You can only view your own vendor profile.", { code: "forbidden" });
   }
-  res.json({ vendor: vendorOut(vendor) });
+  res.json({
+    vendor: vendorOut(vendor, { includeInternalNotes: req.user.role !== "vendor" }),
+  });
 });
 
 router.post("/", requireRole("admin", "procurement"), async (req, res) => {
