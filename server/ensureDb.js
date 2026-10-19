@@ -46,14 +46,16 @@ export async function ensureDatabase() {
   }
 
   const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1";
-  const isOpen = await isPortOpen(port, host);
 
-  if (isOpen) {
+  // Managed/remote databases are connected to through Prisma. Probing their
+  // TCP port here only produced misleading "unable to connect" warnings when
+  // the provider throttles or requires TLS, so leave them alone entirely.
+  if (!isLocal) {
     return;
   }
 
-  if (!isLocal) {
-    console.warn(`[db] Unable to connect to remote database at ${host}:${port}`);
+  const isOpen = await isPortOpen(port, host);
+  if (isOpen) {
     return;
   }
 

@@ -2,7 +2,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 server.log
-server.pid
+*.pid
 .mail-outbox.jsonl
 .env
 .env.local

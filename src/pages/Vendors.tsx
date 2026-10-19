@@ -105,6 +105,11 @@ export default function Vendors() {
 
   const categories = meta.data?.categories.map((item) => item.name) ?? [];
   const counts = list.data?.statusCounts;
+  // Status counts are register-wide (they ignore the active filters), so the
+  // "Total vendors" card must be derived from them rather than from the
+  // filtered result count. Vendors only ever see their own single record.
+  const statusTotal = Object.values(counts ?? {}).reduce((sum, value) => sum + value, 0);
+  const registerTotal = isVendor ? list.data?.total ?? 0 : statusTotal || meta.data?.total || 0;
   const canManage = Boolean(permissions?.manageVendors);
 
   const copyToClipboard = async (text: string, fieldName: string) => {
@@ -258,7 +263,7 @@ export default function Vendors() {
           <>
             {/* Top Metric Cards */}
             <div className="mb-4 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-              <StatCard label="Total vendors" value={list.data?.total ?? meta.data?.total ?? 0} hint="Registered suppliers" icon={<Building2 size={16} />} />
+              <StatCard label="Total vendors" value={registerTotal} hint="Registered suppliers" icon={<Building2 size={16} />} />
               <StatCard label="Active" value={counts?.Active ?? 0} hint="Approved for procurement" icon={<Check size={16} />} trend={{ value: `${counts?.Active ?? 0} live`, positive: true }} />
               <StatCard label="Pending" value={counts?.Pending ?? 0} hint="Awaiting review" icon={<Building2 size={16} />} />
               <StatCard label="Blocked / Inactive" value={(counts?.Blocked ?? 0) + (counts?.Inactive ?? 0)} hint="Restricted records" icon={<Building2 size={16} />} />
