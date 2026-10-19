@@ -214,14 +214,10 @@ const detailInclude = {
     include: { vendor: { select: { id: true, name: true, code: true, status: true } } },
   },
   creator: { select: { id: true, firstName: true, lastName: true } },
-  _count: { select: { items: true, assignments: true, quotations: true } },
+  _count: { select: { items: true, assignments: true, quotations: { where: { status: "submitted" } } } },
 };
 
 const quotationInclude = { items: { orderBy: { id: "asc" } } };
-
-function isUniqueViolation(error) {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
-}
 
 function assertFutureDeadline(deadline) {
   if (!(deadline instanceof Date) || Number.isNaN(deadline.getTime())) {
@@ -483,7 +479,7 @@ router.get("/", async (req, res) => {
       take: query.pageSize,
       include: {
         creator: { select: { id: true, firstName: true, lastName: true } },
-        _count: { select: { items: true, assignments: true, quotations: true } },
+        _count: { select: { items: true, assignments: true, quotations: { where: { status: "submitted" } } } },
       },
     }),
     prisma.rfq.count({ where }),
@@ -507,7 +503,7 @@ router.get("/", async (req, res) => {
   let myQuotations = new Map();
   if (vendor) {
     const quotations = await prisma.quotation.findMany({
-      where: { vendorId: vendor.id, rfqId: { in: rows.map((row) => row.id) } },
+      where: { vendorId: vendor.id, rfqId: { in: rows.map((row) => row.id) }, status: "submitted" },
       select: { id: true, rfqId: true, total: true, submittedAt: true, revision: true },
     });
     myQuotations = new Map(quotations.map((quotation) => [quotation.rfqId, quotation]));
@@ -744,7 +740,7 @@ router.post("/:id/close", requireRole(...WRITE_ROLES), async (req, res) => {
 
   const updated = await prisma.rfq.findUnique({ where: { id }, include: detailInclude });
   const quotations = await prisma.quotation.findMany({
-    where: { rfqId: id },
+    where: { rfqId: id, status: "submitted" },
     select: { id: true, vendorId: true, total: true, submittedAt: true, revision: true },
   });
   res.json({ rfq: rfqDetailOut(updated, { submissions: buildSubmissions(updated, quotations) }) });
@@ -790,7 +786,7 @@ router.get("/:id/quotations", requireRole(...STAFF_ROLES), async (req, res) => {
     where: { id },
     include: {
       items: { orderBy: { position: "asc" } },
-      _count: { select: { items: true, assignments: true, quotations: true } },
+      _count: { select: { items: true, assignments: true, quotations: { where: { status: "submitted" } } } },
     },
   });
   if (!rfq) throw new ApiError(404, "RFQ not found.", { code: "not_found" });
@@ -816,7 +812,7 @@ router.get("/:id/comparison", requireRole(...STAFF_ROLES), async (req, res) => {
     include: {
       items: { orderBy: { position: "asc" } },
       creator: { select: { id: true, firstName: true, lastName: true } },
-      _count: { select: { items: true, assignments: true, quotations: true } },
+      _count: { select: { items: true, assignments: true, quotations: { where: { status: "submitted" } } } },
     },
   });
   if (!rfq) throw new ApiError(404, "RFQ not found.", { code: "not_found" });
@@ -824,7 +820,7 @@ router.get("/:id/comparison", requireRole(...STAFF_ROLES), async (req, res) => {
   // Drafts have no visible submissions, but the comparison screen still
   // renders an explicit empty state instead of erroring.
   const quotations = await prisma.quotation.findMany({
-    where: { rfqId: id },
+    where: { rfqId: id, status: "submitted" },
     orderBy: [{ total: "asc" }, { submittedAt: "asc" }],
     include: {
       ...quotationInclude,
@@ -850,9 +846,10 @@ router.get("/:id", async (req, res) => {
     if (!assigned || rfq.status === "draft") {
       throw new ApiError(404, "RFQ not found.", { code: "not_found" });
     }
-    const quotation = await prisma.quotation.findUnique({
-      where: { rfqId_vendorId: { rfqId: id, vendorId: vendor.id } },
+    const quotation = await prisma.quotation.findFirst({
+      where: { rfqId: id, vendorId: vendor.id, status: "submitted" },
       include: quotationInclude,
+      orderBy: { revision: "desc" },
     });
     res.json({
       rfq: rfqDetailOut(rfq, { includeAssignments: false }),
@@ -863,7 +860,7 @@ router.get("/:id", async (req, res) => {
   }
 
   const quotations = await prisma.quotation.findMany({
-    where: { rfqId: id },
+    where: { rfqId: id, status: "submitted" },
     select: { id: true, vendorId: true, total: true, submittedAt: true, revision: true },
   });
   res.json({
@@ -874,7 +871,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Vendor submission (create or revise — one quotation per vendor per RFQ)
+// Vendor submission: every edit creates a new immutable quotation revision.
 // ---------------------------------------------------------------------------
 
 router.put("/:id/quotation", requireRole("vendor"), async (req, res) => {
@@ -907,75 +904,69 @@ router.put("/:id/quotation", requireRole("vendor"), async (req, res) => {
 
   const { lines, totals } = await quoteTotalsFor(rfq, data);
   const timestamp = now();
-
-  const write = () =>
-    prisma.$transaction(
-      async (tx) => {
-        const existing = await tx.quotation.findUnique({
-          where: { rfqId_vendorId: { rfqId: id, vendorId: vendor.id } },
-          select: { id: true, revision: true },
-        });
-
-        if (existing) {
-          await tx.quotationItem.deleteMany({ where: { quotationId: existing.id } });
-          return {
-            created: false,
-            quotation: await tx.quotation.update({
-              where: { id: existing.id },
-              data: {
-                currency: rfq.currency,
-                deliveryDays: data.deliveryDays,
-                deliveryTerms: data.deliveryTerms || null,
-                notes: data.notes || null,
-                taxPercent: roundMoney(data.taxPercent),
-                subtotal: totals.subtotal,
-                taxAmount: totals.taxAmount,
-                shippingAmount: totals.shippingAmount,
-                total: totals.total,
-                revision: { increment: 1 },
-                updatedAt: timestamp,
-                items: { create: lines },
-              },
-              include: quotationInclude,
-            }),
-          };
-        }
-
-        return {
-          created: true,
-          quotation: await tx.quotation.create({
-            data: {
-              rfqId: id,
-              vendorId: vendor.id,
-              currency: rfq.currency,
-              deliveryDays: data.deliveryDays,
-              deliveryTerms: data.deliveryTerms || null,
-              notes: data.notes || null,
-              taxPercent: roundMoney(data.taxPercent),
-              subtotal: totals.subtotal,
-              taxAmount: totals.taxAmount,
-              shippingAmount: totals.shippingAmount,
-              total: totals.total,
-              revision: 1,
-              submittedAt: timestamp,
-              updatedAt: timestamp,
-              items: { create: lines },
-            },
-            include: quotationInclude,
-          }),
-        };
-      },
-      { timeout: 20000 },
-    );
-
   let result;
   try {
-    result = await write();
+    result = await prisma.$transaction(async (tx) => {
+      // A shared RFQ lock is compatible across different vendors but blocks
+      // concurrent close/cancel updates until this submission commits.
+      const locked = await tx.$queryRaw`SELECT "status", "deadline" FROM "rfqs" WHERE "id" = ${id} FOR SHARE`;
+      if (!locked.length || locked[0].status !== "open" || new Date(locked[0].deadline).getTime() <= Date.now()) {
+        throw new ApiError(409, "This RFQ is closed or its submission deadline has passed.", {
+          code: "rfq_not_accepting",
+        });
+      }
+
+      // Serialize same-vendor revisions while allowing other vendors to submit
+      // concurrently. The partial unique index is the final database backstop.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${id}, ${vendor.id})`;
+      const previous = await tx.quotation.findFirst({
+        where: { rfqId: id, vendorId: vendor.id, status: "submitted" },
+        orderBy: { revision: "desc" },
+        select: { id: true, revision: true },
+      });
+
+      if (previous) {
+        await tx.quotation.update({
+          where: { id: previous.id },
+          data: { status: "superseded", supersededAt: timestamp, updatedAt: timestamp },
+        });
+      }
+
+      const revision = (previous?.revision ?? 0) + 1;
+      const quotation = await tx.quotation.create({
+        data: {
+          rfqId: id,
+          vendorId: vendor.id,
+          currency: rfq.currency,
+          deliveryDays: data.deliveryDays,
+          deliveryTerms: data.deliveryTerms || null,
+          notes: data.notes || null,
+          taxPercent: roundMoney(data.taxPercent),
+          subtotal: totals.subtotal,
+          taxAmount: totals.taxAmount,
+          shippingAmount: totals.shippingAmount,
+          total: totals.total,
+          revision,
+          supersedesId: previous?.id ?? null,
+          submittedAt: timestamp,
+          updatedAt: timestamp,
+          items: { create: lines },
+        },
+        include: quotationInclude,
+      });
+      return { created: !previous, quotation };
+    }, { timeout: 20000 });
   } catch (error) {
-    // Two simultaneous submissions can race on the unique (rfq, vendor) key;
-    // the second attempt takes the revision path.
-    if (isUniqueViolation(error)) result = await write();
-    else throw error;
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2004" &&
+      `${error.message} ${JSON.stringify(error.meta ?? {})}`.includes("quotations_rfq_deadline_check")
+    ) {
+      throw new ApiError(409, "This RFQ is closed or its submission deadline has passed.", {
+        code: "rfq_not_accepting",
+      });
+    }
+    throw error;
   }
 
   res.status(result.created ? 201 : 200).json({

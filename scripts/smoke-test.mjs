@@ -654,10 +654,11 @@ async function main() {
     ],
   });
   check(
-    "resubmission revises the same quotation (one per vendor)",
+    "resubmission creates a separate linked quotation revision",
     revisedNova.status === 200 &&
-      revisedNova.body?.quotation?.id === novaQuotation?.id &&
-      revisedNova.body?.quotation?.revision === 2,
+      revisedNova.body?.quotation?.id !== novaQuotation?.id &&
+      revisedNova.body?.quotation?.revision === 2 &&
+      revisedNova.body?.quotation?.supersedesId === novaQuotation?.id,
   );
 
   const [concurrentA, concurrentB] = await Promise.all([
@@ -681,8 +682,9 @@ async function main() {
     }),
   ]);
   check(
-    "concurrent submissions from one vendor do not duplicate quotations",
-    [200, 201].includes(concurrentA.status) && [200, 201].includes(concurrentB.status),
+    "concurrent submissions serialize into distinct quotation revisions",
+    [200, 201].includes(concurrentA.status) && [200, 201].includes(concurrentB.status) &&
+      concurrentA.body?.quotation?.id !== concurrentB.body?.quotation?.id,
   );
 
   const zenQuote = await zenithAccount.call("PUT", `/rfqs/${rfq1?.id}/quotation`, {
@@ -704,13 +706,32 @@ async function main() {
       "/rfqs",
       rfqBody({
         title: `[smoke] Deadline enforcement ${stamp}`,
-        deadline: new Date(Date.now() + 4000).toISOString(),
+        deadline: new Date(Date.now() + 6000).toISOString(),
         vendorIds: [zenith.id],
       }),
     )
   ).body?.rfq;
   await procurement("POST", `/rfqs/${expiredRfq?.id}/publish`);
-  await sleep(5000);
+  let commitDeadlineRejected = false;
+  try {
+    const { prisma: deadlinePrisma } = await import("../server/db.js");
+    await deadlinePrisma.$transaction(async (tx) => {
+      const [inserted] = await tx.$queryRaw`INSERT INTO "quotations" (
+        "rfq_id", "vendor_id", "currency", "delivery_days", "tax_percent",
+        "subtotal", "tax_amount", "shipping_amount", "total", "revision",
+        "submitted_at", "updated_at"
+      ) VALUES (
+        ${expiredRfq.id}, ${zenith.id}, ${expiredRfq.currency}, 2, 0,
+        90, 0, 0, 90, 1, clock_timestamp() AT TIME ZONE 'UTC', clock_timestamp() AT TIME ZONE 'UTC'
+      ) RETURNING "id"`;
+      await tx.$executeRaw`INSERT INTO "quotation_items" ("quotation_id", "rfq_item_id", "unit_price", "line_total")
+        VALUES (${inserted.id}, ${expiredRfq.items[0].id}, 90, 90)`;
+      await sleep(Math.max(0, new Date(expiredRfq.deadline).getTime() - Date.now() + 100));
+    }, { timeout: 15000 });
+  } catch {
+    commitDeadlineRejected = true;
+  }
+  check("PostgreSQL rejects a quote whose transaction crosses the deadline", commitDeadlineRejected);
   const lateSubmission = await zenithAccount.call("PUT", `/rfqs/${expiredRfq?.id}/quotation`, {
     deliveryDays: 2,
     items: expiredRfq.items.map((item) => ({ rfqItemId: item.id, unitPrice: "90" })),
@@ -726,8 +747,10 @@ async function main() {
 
   section("10. Quotation review and comparison");
   const quotationList = await procurement("GET", `/rfqs/${rfq1?.id}/quotations`);
-  check("procurement sees every quotation for the RFQ", quotationList.status === 200 && quotationList.body?.quotations?.length === 2);
-  const novaRow = quotationList.body?.quotations?.find((entry) => entry.vendorId === nova.id);
+  check("procurement sees current and historical quotation revisions", quotationList.status === 200 && quotationList.body?.quotations?.length === 5);
+  const novaRevisions = quotationList.body?.quotations?.filter((entry) => entry.vendorId === nova.id).sort((a, b) => b.revision - a.revision);
+  const novaRow = novaRevisions?.[0];
+  check("historical Nova revisions are preserved and superseded", novaRevisions?.length === 4 && novaRevisions.slice(1).every((entry) => entry.status === "superseded"));
   const zenRow = quotationList.body?.quotations?.find((entry) => entry.vendorId === zenith.id);
   check("quotation list includes vendor identity", novaRow?.vendorName === nova.name);
   check("quotation list exposes stored totals", zenRow?.total === "51830.00");
@@ -763,18 +786,13 @@ async function main() {
   let prisma = null;
   try {
     ({ prisma } = await import("../server/db.js"));
-    await prisma.quotation.update({ where: { id: zenRow.id }, data: { currency: "USD" } });
-    const excluded = await procurement("GET", `/rfqs/${rfq1?.id}/comparison`);
-    check(
-      "currency-mismatched quotations are excluded from the highlight",
-      excluded.body?.summary?.excludedCount === 1 &&
-        excluded.body?.excluded?.[0]?.reasons?.some((reason) => reason.includes("USD")),
-    );
-    check(
-      "the next-lowest comparable quotation wins instead",
-      excluded.body?.lowest?.vendorId === nova.id && excluded.body?.lowest?.total === "53850.00",
-    );
-    await prisma.quotation.update({ where: { id: zenRow.id }, data: { currency: "INR" } });
+    let mutationRejected = false;
+    try {
+      await prisma.quotation.update({ where: { id: zenRow.id }, data: { currency: "USD" } });
+    } catch {
+      mutationRejected = true;
+    }
+    check("database prevents mutation of submitted financial bids", mutationRejected);
   } finally {
     if (prisma) await prisma.$disconnect().catch(() => {});
   }
