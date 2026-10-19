@@ -295,13 +295,13 @@ and short motion that respects `prefers-reduced-motion`.
 
 ---
 
-## 10. Known limitations (documented honestly)
+## 10. Known Limitations
 
-Dependency audit: npm audit --omit=dev reports the Prisma CLI's deepmerge-ts advisory (high). The fix requires a Prisma 7 upgrade, which was not applied to maintain project stability.
-Neon connection resets: The managed database occasionally drops idle connections, which surfaces as a 503 database_unavailable on the first request after the drop. The API is built to return explicit errors rather than fabricating data, and subsequent retries succeed.
-Role provisioning: Public registration is currently limited to Vendor accounts. Procurement and Manager accounts must be provisioned directly via the database, as there is no admin invitation UI in the current milestone.
-Automated UI tests: None yet. Verification currently relies on the 78-check API suite plus manual browser walkthroughs covering route protection, state management, and form validation.
-Future Scope (Update this): Instead of saying "Weeks 2-4 are not implemented", update it to reflect your current sprint: "Modules for Manager Approvals, Purchase Orders, Invoices, and Audit Logs remain out of scope for the current milestone and display empty states."
+* **Dependency audit:** `npm audit --omit=dev` reports the Prisma CLI's `deepmerge-ts` advisory (high). The fix requires a Prisma 7 upgrade, which was not applied to maintain project stability.
+* **Neon connection resets:** The managed database occasionally drops idle connections, which surfaces as a `503 database_unavailable` on the first request after the drop. The API is built to return explicit errors rather than fabricating data, and subsequent retries succeed.
+* **Role provisioning:** Public registration is currently limited to Vendor accounts. Procurement and Manager accounts must be provisioned directly via the database, as there is no admin invitation UI in the current milestone.
+* **Automated UI tests:** None yet. Verification currently relies on the 78-check API suite plus manual browser walkthroughs (Chrome at 1440×900 and 390×844) covering route protection, state management, and form validation.
+* **Future Scope:** Modules for Manager Approvals, Purchase Orders, Invoices, and Audit Logs remain out of scope for the current milestone and display explicit empty states.
   
 
 ---
