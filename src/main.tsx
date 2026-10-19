@@ -14,11 +14,10 @@ import "./index.css";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Revalidate API-backed data on every page mount and when the tab regains
-      // focus; cached data can remain visible while the fresh response loads.
-      staleTime: 0,
-      refetchOnMount: "always",
-      refetchOnWindowFocus: "always",
+      // Keep recently fetched data fresh briefly to avoid redundant API calls;
+      // mutations still invalidate affected queries for timely updates.
+      staleTime: 15_000,
+      refetchOnWindowFocus: true,
       gcTime: 5 * 60_000,
       retry: (failureCount, error) => {
         if (error instanceof ApiError && error.status > 0 && error.status < 500) return false;

@@ -6,7 +6,13 @@ import { PrismaClient } from "@prisma/client";
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(here, "..");
 
-export const prisma = new PrismaClient();
+const globalForPrisma = globalThis;
+
+export const prisma = globalForPrisma.prisma || new PrismaClient();
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}
 
 export function now() {
   return new Date();
