@@ -376,7 +376,7 @@ export function RfqForm({
                 : "No vendors match that search."}
             </p>
           ) : (
-            <ul className="grid max-h-72 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+            <ul className="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto pr-1">
               {visibleVendors.map((vendor) => {
                 const selected = values.vendorIds.includes(vendor.id);
                 return (
@@ -394,11 +394,13 @@ export function RfqForm({
                       />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[12px] font-bold text-ink">{vendor.name}</span>
-                        <span className="block truncate text-[11px] text-muted">
-                          <span className="font-mono">{vendor.code}</span> · {vendor.category} · {vendor.city || "—"}
+                        <span className="mt-1 flex items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
+                            <span className="font-mono">{vendor.code}</span> · {vendor.category} · {vendor.city || "—"}
+                          </span>
+                          <Badge status={vendor.status} className="shrink-0 text-[10px]" />
                         </span>
                       </span>
-                      <Badge status={vendor.status} className="text-[10px]" />
                     </label>
                   </li>
                 );
