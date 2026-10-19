@@ -28,7 +28,7 @@ export async function seed({ force = false } = {}) {
     async (tx) => {
       const createdAt = now();
 
-      const insertUser = (firstName, lastName, email, password, role, extra = {}) =>
+      const insertUser = async (firstName, lastName, email, password, role, extra = {}) =>
         tx.user.create({
           data: {
             firstName,
@@ -38,7 +38,7 @@ export async function seed({ force = false } = {}) {
             country: extra.country || "India",
             role,
             additionalInfo: extra.additionalInfo || null,
-            passwordHash: hashPassword(password),
+            passwordHash: await hashPassword(password),
             createdAt,
           },
         });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ApiError,
   COOKIE_MAX_AGE,
+  COOKIE_NAME,
   clearSessionCookie,
   currentVendorFor,
   emailSchema,
@@ -108,6 +109,7 @@ router.post("/register", async (req, res) => {
     });
   }
 
+  const passwordHash = await hashPassword(data.password);
   const created = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
@@ -118,7 +120,7 @@ router.post("/register", async (req, res) => {
         country: data.country,
         role: "vendor",
         additionalInfo: data.additionalInfo || null,
-        passwordHash: hashPassword(data.password),
+        passwordHash,
         createdAt: now(),
       },
     });
@@ -168,7 +170,7 @@ const loginSchema = z.object({
 router.post("/login", loginLimiter, async (req, res) => {
   const data = parse(loginSchema, req.body);
   const user = await prisma.user.findUnique({ where: { email: data.email } });
-  if (!user || !verifyPassword(data.password, user.passwordHash)) {
+  if (!user || !(await verifyPassword(data.password, user.passwordHash))) {
     throw new ApiError(401, "Incorrect email or password.", { code: "invalid_credentials" });
   }
   const token = signToken(user);
@@ -187,6 +189,20 @@ router.get("/me", requireAuth, async (req, res) => {
     throw new ApiError(401, "Your session is no longer valid. Please sign in again.", {
       code: "unauthenticated",
     });
+  }
+  const { iat, exp } = req.authPayload || {};
+  const tokenLifetime = Number(exp) - Number(iat);
+  const tokenAge = Math.floor(Date.now() / 1000) - Number(iat);
+  // Renew only cookie-based sessions after half of their signed lifetime has
+  // elapsed. Bearer-token clients retain control of their own token lifecycle.
+  if (
+    req.cookies?.[COOKIE_NAME] &&
+    Number.isFinite(tokenLifetime) &&
+    tokenLifetime > 0 &&
+    Number.isFinite(tokenAge) &&
+    tokenAge >= tokenLifetime / 2
+  ) {
+    setSessionCookie(res, signToken(user));
   }
   res.json(await sessionPayload(user));
 });
@@ -288,8 +304,9 @@ router.post("/reset-password", async (req, res) => {
       code: "invalid_reset_token",
     });
   }
+  const passwordHash = await hashPassword(password);
   await prisma.$transaction([
-    prisma.user.update({ where: { id: record.userId }, data: { passwordHash: hashPassword(password) } }),
+    prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
     prisma.passwordReset.update({ where: { token }, data: { used: 1 } }),
   ]);
   res.json({ message: "Password updated. You can sign in with your new password." });
