@@ -379,10 +379,12 @@ async function main() {
   check("logout succeeds", logout.status === 200);
   check("session is cleared after logout", (await logoutClient("GET", "/auth/me")).status === 401);
 
-  section("6. Removed module endpoints");
-  for (const path of ["/rfqs", "/quotations", "/approvals", "/purchase-orders", "/invoices", "/reports", "/activity"]) {
+  section("6. Module scope guard");
+  for (const path of ["/approvals", "/purchase-orders", "/invoices", "/reports", "/activity"]) {
     check(`${path} is not exposed`, (await procurement("GET", path)).status === 404);
   }
+  check("anonymous /rfqs returns 401", (await client()("GET", "/rfqs")).status === 401);
+  check("procurement can read /rfqs", (await procurement("GET", "/rfqs")).status === 200);
 
   section("7. Persistence");
   const freshClient = await login("procurement@vendorbridge.dev", "Procure@123");
@@ -391,6 +393,519 @@ async function main() {
   const deleted = await freshClient.call("DELETE", `/vendors/${vendorId}`);
   check("procurement can delete a vendor", deleted.status === 200);
   check("deleted vendor is gone", (await freshClient.call("GET", `/vendors/${vendorId}`)).status === 404);
+
+  // -------------------------------------------------------------------------
+  // Week 2 — RFQ and quotation workflow
+  // -------------------------------------------------------------------------
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Week 2 vendors are created by the suite itself under the reserved
+  // @vendorbridge.test domain, so the tests never depend on seeded demo
+  // accounts and cleanup can remove exactly what they created.
+  async function createVendorAccount(label) {
+    const call = client();
+    const email = `smoke-${label.toLowerCase()}${stamp}@vendorbridge.test`;
+    const registration = await call("POST", "/auth/register", {
+      firstName: "Smoke",
+      lastName: label,
+      email,
+      phone: "+91 90000 12345",
+      country: "India",
+      password: "Vendor@2026",
+      companyName: `[smoke] ${label} Supplies ${stamp}`,
+      category: "Office Supplies",
+    });
+    if (registration.status !== 201) {
+      throw new Error(`Could not register the ${label} test vendor (status ${registration.status}).`);
+    }
+    const vendor = (await call("GET", "/vendors")).body?.items?.[0];
+    return { call, vendor };
+  }
+
+  const novaAccount = await createVendorAccount("Alpha");
+  const nova = novaAccount.vendor;
+  const zenithAccount = await createVendorAccount("Beta");
+  const zenith = zenithAccount.vendor;
+  const apexAccount = await createVendorAccount("Gamma");
+  const apex = apexAccount.vendor;
+  check(
+    "Week 2 fixtures: three independent vendor accounts with linked vendor records",
+    Boolean(nova?.id && zenith?.id && apex?.id) &&
+      new Set([nova.id, zenith.id, apex.id]).size === 3 &&
+      nova.userId !== zenith.userId,
+  );
+
+  const unassignedVendorId = (await anonB("GET", "/vendors")).body?.items?.[0]?.id;
+  check("registered vendor fixture is available for access-control tests", Boolean(unassignedVendorId));
+
+  function rfqBody(overrides = {}) {
+    return {
+      title: `[smoke] Office equipment ${stamp}`,
+      description: "Deliver to the Bengaluru headquarters.",
+      currency: "INR",
+      deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      vendorIds: [nova.id, zenith.id],
+      items: [
+        { description: "14-inch business laptop", quantity: 10, unit: "unit", specifications: "i5 / 16 GB" },
+        { description: "USB-C docking station", quantity: 5, unit: "unit", specifications: "Dual HDMI" },
+      ],
+      ...overrides,
+    };
+  }
+
+  section("8. RFQ creation, validation and lifecycle");
+  check("anonymous cannot list RFQs", (await client()("GET", "/rfqs")).status === 401);
+  check("anonymous cannot create RFQs", (await client()("POST", "/rfqs", rfqBody())).status === 401);
+  check("vendor cannot create RFQs (403)", (await vendor("POST", "/rfqs", rfqBody())).status === 403);
+  check("manager cannot create RFQs (403)", (await manager("POST", "/rfqs", rfqBody())).status === 403);
+
+  const createdRfq = await procurement("POST", "/rfqs", rfqBody());
+  const rfq1 = createdRfq.body?.rfq;
+  check("procurement can create a draft RFQ", createdRfq.status === 201, `status ${createdRfq.status}`);
+  check("RFQ receives a generated reference", /^RFQ-\d{4,}$/.test(rfq1?.reference ?? ""));
+  check("new RFQ starts as a draft", rfq1?.status === "draft" && rfq1?.publishedAt === null);
+  check("RFQ stores both requested line items in order", rfq1?.items?.length === 2 && rfq1?.items?.[0]?.position === 1);
+  check("RFQ stores vendor assignments", rfq1?.assignments?.length === 2 && rfq1?.vendorCount === 2);
+  check("decimal quantities are serialised without trailing zeros", rfq1?.items?.[0]?.quantity === "10");
+
+  const forgedRfq = await procurement("POST", "/rfqs", {
+    ...rfqBody(),
+    status: "open",
+    reference: "RFQ-FORGED",
+    createdBy: 1,
+    publishedAt: "2020-01-01T00:00:00.000Z",
+  });
+  check(
+    "server ignores client-supplied status, reference and creator",
+    forgedRfq.status === 201 &&
+      forgedRfq.body?.rfq?.status === "draft" &&
+      forgedRfq.body?.rfq?.reference !== "RFQ-FORGED" &&
+      forgedRfq.body?.rfq?.publishedAt === null &&
+      forgedRfq.body?.rfq?.creatorName === "Rohan Mehta",
+  );
+  const forgedRfqId = forgedRfq.body?.rfq?.id;
+
+  const invalidRfqs = [
+    ["short title", rfqBody({ title: "x" }), "title"],
+    ["no line items", rfqBody({ items: [] }), "items"],
+    ["negative quantity", rfqBody({ items: [{ description: "Bad line", quantity: "-2", unit: "unit" }] }), "items.0.quantity"],
+    ["zero quantity", rfqBody({ items: [{ description: "Bad line", quantity: 0, unit: "unit" }] }), "items.0.quantity"],
+    ["non-finite quantity", rfqBody({ items: [{ description: "Bad line", quantity: "abc", unit: "unit" }] }), "items.0.quantity"],
+    ["unknown unit", rfqBody({ items: [{ description: "Bad line", quantity: 1, unit: "banana" }] }), "items.0.unit"],
+    ["unsupported currency", rfqBody({ currency: "XYZ" }), "currency"],
+    ["deadline in the past", rfqBody({ deadline: new Date(Date.now() - 3600000).toISOString() }), "deadline"],
+    ["unknown vendor id", rfqBody({ vendorIds: [999999] }), "vendorIds"],
+    ["duplicate vendor assignment", rfqBody({ vendorIds: [nova.id, nova.id] }), "vendorIds"],
+  ];
+  for (const [label, payload, field] of invalidRfqs) {
+    const result = await procurement("POST", "/rfqs", payload);
+    check(
+      `${label} is rejected with 422 (${field})`,
+      result.status === 422 && Boolean(result.body?.error?.fields?.[field]),
+      `status ${result.status}`,
+    );
+  }
+
+  check("manager can read an RFQ", (await manager("GET", `/rfqs/${rfq1?.id}`)).status === 200);
+  check(
+    "assigned vendor cannot see a draft RFQ",
+    (await novaAccount.call("GET", `/rfqs/${forgedRfqId}`)).status === 404,
+  );
+
+  const published1 = await procurement("POST", `/rfqs/${rfq1?.id}/publish`);
+  check("draft RFQ can be published", published1.status === 200 && published1.body?.rfq?.status === "open");
+  check("publishing records a timestamp", Boolean(published1.body?.rfq?.publishedAt));
+  check("publishing twice is rejected with 409", (await procurement("POST", `/rfqs/${rfq1?.id}/publish`)).status === 409);
+  check(
+    "published RFQ can no longer be edited",
+    (await procurement("PUT", `/rfqs/${rfq1?.id}`, rfqBody({ title: "[smoke] Edited after publish" }))).status === 409,
+  );
+  check(
+    "vendors cannot be reassigned after publication",
+    (await procurement("PUT", `/rfqs/${rfq1?.id}/vendors`, { vendorIds: [apex.id] })).status === 409,
+  );
+
+  const draft2 = (await procurement("POST", "/rfqs", rfqBody({ title: `[smoke] Close flow ${stamp}`, vendorIds: [] }))).body?.rfq;
+  check("draft RFQ can be created without vendors", draft2?.status === "draft" && draft2?.vendorCount === 0);
+  check("draft RFQ cannot be closed", (await procurement("POST", `/rfqs/${draft2?.id}/close`)).status === 409);
+  const publishWithoutVendors = await procurement("POST", `/rfqs/${draft2?.id}/publish`);
+  check(
+    "publishing without assigned vendors is rejected with 422",
+    publishWithoutVendors.status === 422 && Boolean(publishWithoutVendors.body?.error?.fields?.vendorIds),
+  );
+  const assigned = await procurement("PUT", `/rfqs/${draft2?.id}/vendors`, { vendorIds: [zenith.id] });
+  check(
+    "vendor assignments can be replaced while in draft",
+    assigned.status === 200 && assigned.body?.rfq?.assignments?.length === 1 && assigned.body?.rfq?.assignments?.[0]?.vendorId === zenith.id,
+  );
+  await procurement("PUT", `/rfqs/${draft2?.id}/vendors`, { vendorIds: [nova.id] });
+  const published2 = await procurement("POST", `/rfqs/${draft2?.id}/publish`);
+  check("draft with vendors and a future deadline publishes", published2.status === 200);
+  check("open RFQ can be closed", (await procurement("POST", `/rfqs/${draft2?.id}/close`)).status === 200);
+  check("closing twice is rejected with 409", (await procurement("POST", `/rfqs/${draft2?.id}/close`)).status === 409);
+  check("a closed RFQ cannot be published", (await procurement("POST", `/rfqs/${draft2?.id}/publish`)).status === 409);
+  check("a closed RFQ cannot be cancelled", (await procurement("POST", `/rfqs/${draft2?.id}/cancel`)).status === 409);
+  check(
+    "assigned vendor can still read a closed RFQ",
+    (await novaAccount.call("GET", `/rfqs/${draft2?.id}`)).status === 200,
+  );
+
+  const draft3 = (await procurement("POST", "/rfqs", rfqBody({ title: `[smoke] Cancel flow ${stamp}`, vendorIds: [nova.id] }))).body?.rfq;
+  await procurement("POST", `/rfqs/${draft3?.id}/publish`);
+  check("open RFQ can be cancelled", (await procurement("POST", `/rfqs/${draft3?.id}/cancel`)).status === 200);
+  const cancelledDetail = await novaAccount.call("GET", `/rfqs/${draft3?.id}`);
+  check(
+    "cancelled RFQ reports the cancelled status to vendors",
+    cancelledDetail.status === 200 && cancelledDetail.body?.rfq?.effectiveStatus === "cancelled",
+  );
+  check("cancelled RFQ rejects submissions", (await novaAccount.call("PUT", `/rfqs/${draft3?.id}/quotation`, {
+    deliveryDays: 5,
+    items: cancelledDetail.body.rfq.items.map((item) => ({ rfqItemId: item.id, unitPrice: "100" })),
+  })).status === 409);
+
+  const concurrent = await Promise.all(
+    Array.from({ length: 5 }, (_, index) =>
+      procurement("POST", "/rfqs", rfqBody({ title: `[smoke] Concurrent ${stamp} ${index}`, vendorIds: [] })),
+    ),
+  );
+  const concurrentReferences = concurrent.map((result) => result.body?.rfq?.reference);
+  check(
+    "concurrent creation allocates unique references",
+    concurrent.every((result) => result.status === 201) &&
+      new Set(concurrentReferences).size === concurrent.length &&
+      concurrentReferences.every((reference) => /^RFQ-\d{4,}$/.test(reference ?? "")),
+  );
+
+  section("9. Vendor access and quotation submission");
+  const vendorDetail = await novaAccount.call("GET", `/rfqs/${rfq1?.id}`);
+  check("assigned vendor can read a published RFQ", vendorDetail.status === 200);
+  check("vendor response exposes only their own quotation", vendorDetail.body?.myQuotation === null);
+  check(
+    "vendor response omits other vendors and their submissions",
+    vendorDetail.body?.rfq &&
+      !Object.hasOwn(vendorDetail.body.rfq, "assignments") &&
+      !Object.hasOwn(vendorDetail.body.rfq, "submissions"),
+  );
+  check(
+    "vendor cannot read an RFQ assigned to other vendors",
+    (await anonB("GET", `/rfqs/${rfq1?.id}`)).status === 404,
+  );
+  check(
+    "unassigned vendor cannot submit a quotation",
+    (await anonB("PUT", `/rfqs/${rfq1?.id}/quotation`, {
+      deliveryDays: 3,
+      items: vendorDetail.body.rfq.items.map((item) => ({ rfqItemId: item.id, unitPrice: "10" })),
+    })).status === 403,
+  );
+  check("vendor cannot read procurement quotation lists", (await novaAccount.call("GET", `/rfqs/${rfq1?.id}/quotations`)).status === 403);
+  check("vendor cannot read the comparison", (await novaAccount.call("GET", `/rfqs/${rfq1?.id}/comparison`)).status === 403);
+
+  const rfqItems = vendorDetail.body.rfq.items;
+  const invalidQuotes = [
+    ["missing a requested item", { deliveryDays: 5, items: [{ rfqItemId: rfqItems[0].id, unitPrice: "100" }] }],
+    ["pricing an unknown item", { deliveryDays: 5, items: [...rfqItems.map((item) => ({ rfqItemId: item.id, unitPrice: "100" })), { rfqItemId: 999999, unitPrice: "1" }] }],
+    ["negative unit price", { deliveryDays: 5, items: rfqItems.map((item) => ({ rfqItemId: item.id, unitPrice: "-5" })) }],
+    ["non-numeric unit price", { deliveryDays: 5, items: rfqItems.map((item) => ({ rfqItemId: item.id, unitPrice: "cheap" })) }],
+    ["missing delivery timeline", { items: rfqItems.map((item) => ({ rfqItemId: item.id, unitPrice: "100" })) }],
+    ["negative delivery timeline", { deliveryDays: -1, items: rfqItems.map((item) => ({ rfqItemId: item.id, unitPrice: "100" })) }],
+    ["tax above 100 percent", { deliveryDays: 5, taxPercent: "150", items: rfqItems.map((item) => ({ rfqItemId: item.id, unitPrice: "100" })) }],
+    ["negative shipping", { deliveryDays: 5, shippingAmount: "-10", items: rfqItems.map((item) => ({ rfqItemId: item.id, unitPrice: "100" })) }],
+  ];
+  for (const [label, payload] of invalidQuotes) {
+    check(
+      `quotation with ${label} is rejected`,
+      [422].includes((await novaAccount.call("PUT", `/rfqs/${rfq1?.id}/quotation`, payload)).status),
+    );
+  }
+
+  const novaQuote = await novaAccount.call("PUT", `/rfqs/${rfq1?.id}/quotation`, {
+    deliveryDays: 10,
+    deliveryTerms: "Freight included",
+    notes: "Prices valid for 30 days.",
+    taxPercent: "18",
+    shippingAmount: "750",
+    // Mass-assignment attempt: these must all be ignored by the server.
+    vendorId: zenith.id,
+    currency: "USD",
+    total: "1.00",
+    submittedAt: "2000-01-01T00:00:00.000Z",
+    items: [
+      { rfqItemId: rfqItems[0].id, unitPrice: "2500" },
+      { rfqItemId: rfqItems[1].id, unitPrice: "4000" },
+    ],
+  });
+  const novaQuotation = novaQuote.body?.quotation;
+  check("assigned vendor can submit a quotation", novaQuote.status === 201, `status ${novaQuote.status}`);
+  check("quotation is linked to the authenticated vendor", novaQuotation?.vendorId === nova.id);
+  check("client-supplied currency is ignored", novaQuotation?.currency === "INR");
+  check("server calculates the line totals", novaQuotation?.subtotal === "45000.00");
+  check("server calculates tax and delivery inclusively", novaQuotation?.taxAmount === "8100.00" && novaQuotation?.total === "53850.00");
+  check("first submission is revision 1", novaQuotation?.revision === 1);
+
+  const revisedNova = await novaAccount.call("PUT", `/rfqs/${rfq1?.id}/quotation`, {
+    deliveryDays: 9,
+    notes: "Revised: faster delivery.",
+    taxPercent: "18",
+    shippingAmount: "750",
+    items: [
+      { rfqItemId: rfqItems[0].id, unitPrice: "2500" },
+      { rfqItemId: rfqItems[1].id, unitPrice: "4000" },
+    ],
+  });
+  check(
+    "resubmission revises the same quotation (one per vendor)",
+    revisedNova.status === 200 &&
+      revisedNova.body?.quotation?.id === novaQuotation?.id &&
+      revisedNova.body?.quotation?.revision === 2,
+  );
+
+  const [concurrentA, concurrentB] = await Promise.all([
+    novaAccount.call("PUT", `/rfqs/${rfq1?.id}/quotation`, {
+      deliveryDays: 8,
+      taxPercent: "18",
+      shippingAmount: "750",
+      items: [
+        { rfqItemId: rfqItems[0].id, unitPrice: "2500" },
+        { rfqItemId: rfqItems[1].id, unitPrice: "4000" },
+      ],
+    }),
+    novaAccount.call("PUT", `/rfqs/${rfq1?.id}/quotation`, {
+      deliveryDays: 8,
+      taxPercent: "18",
+      shippingAmount: "750",
+      items: [
+        { rfqItemId: rfqItems[0].id, unitPrice: "2500" },
+        { rfqItemId: rfqItems[1].id, unitPrice: "4000" },
+      ],
+    }),
+  ]);
+  check(
+    "concurrent submissions from one vendor do not duplicate quotations",
+    [200, 201].includes(concurrentA.status) && [200, 201].includes(concurrentB.status),
+  );
+
+  const zenQuote = await zenithAccount.call("PUT", `/rfqs/${rfq1?.id}/quotation`, {
+    deliveryDays: 12,
+    notes: "Includes 3-year warranty.",
+    taxPercent: "18",
+    shippingAmount: "500",
+    items: [
+      { rfqItemId: rfqItems[0].id, unitPrice: "2400" },
+      { rfqItemId: rfqItems[1].id, unitPrice: "3900" },
+    ],
+  });
+  check("a second assigned vendor can quote the same RFQ", zenQuote.status === 201);
+  check("second quotation total is server-calculated", zenQuote.body?.quotation?.total === "51830.00");
+
+  const expiredRfq = (
+    await procurement(
+      "POST",
+      "/rfqs",
+      rfqBody({
+        title: `[smoke] Deadline enforcement ${stamp}`,
+        deadline: new Date(Date.now() + 4000).toISOString(),
+        vendorIds: [zenith.id],
+      }),
+    )
+  ).body?.rfq;
+  await procurement("POST", `/rfqs/${expiredRfq?.id}/publish`);
+  await sleep(5000);
+  const lateSubmission = await zenithAccount.call("PUT", `/rfqs/${expiredRfq?.id}/quotation`, {
+    deliveryDays: 2,
+    items: expiredRfq.items.map((item) => ({ rfqItemId: item.id, unitPrice: "90" })),
+  });
+  check(
+    "submissions after the UTC deadline are rejected",
+    lateSubmission.status === 409 && lateSubmission.body?.error?.code === "rfq_expired",
+  );
+  check(
+    "expired RFQ is reported as expired while still open",
+    (await zenithAccount.call("GET", `/rfqs/${expiredRfq?.id}`)).body?.rfq?.status === "open",
+  );
+
+  section("10. Quotation review and comparison");
+  const quotationList = await procurement("GET", `/rfqs/${rfq1?.id}/quotations`);
+  check("procurement sees every quotation for the RFQ", quotationList.status === 200 && quotationList.body?.quotations?.length === 2);
+  const novaRow = quotationList.body?.quotations?.find((entry) => entry.vendorId === nova.id);
+  const zenRow = quotationList.body?.quotations?.find((entry) => entry.vendorId === zenith.id);
+  check("quotation list includes vendor identity", novaRow?.vendorName === nova.name);
+  check("quotation list exposes stored totals", zenRow?.total === "51830.00");
+  check(
+    "quotation list can be sorted by total",
+    (await procurement("GET", `/rfqs/${rfq1?.id}/quotations?sort=total_asc`)).body?.quotations?.[0]?.vendorId === zenith.id,
+  );
+  check(
+    "unknown quotation sort is rejected with 400",
+    (await procurement("GET", `/rfqs/${rfq1?.id}/quotations?sort=nonsense`)).status === 400,
+  );
+
+  const comparison = await procurement("GET", `/rfqs/${rfq1?.id}/comparison`);
+  check("comparison returns saved quotations", comparison.status === 200 && comparison.body?.summary?.quotationCount === 2);
+  check(
+    "comparison highlights the lowest server-calculated total",
+    comparison.body?.lowest?.vendorId === zenith.id && comparison.body?.summary?.lowestTotal === "51830.00",
+  );
+  check(
+    "exactly one quotation is marked lowest",
+    comparison.body?.quotations?.filter((entry) => entry.isLowest).length === 1,
+  );
+  check(
+    "comparison documents the cost basis and currency",
+    comparison.body?.basis?.currency === "INR" &&
+      comparison.body?.basis?.includesTax === true &&
+      comparison.body?.basis?.includesShipping === true,
+  );
+
+  // Currency anomalies can only enter through direct data corruption; the API
+  // rejects them, so the exclusion rule is verified by mutating this test RFQ's
+  // quotation and restoring it immediately afterwards.
+  let prisma = null;
+  try {
+    ({ prisma } = await import("../server/db.js"));
+    await prisma.quotation.update({ where: { id: zenRow.id }, data: { currency: "USD" } });
+    const excluded = await procurement("GET", `/rfqs/${rfq1?.id}/comparison`);
+    check(
+      "currency-mismatched quotations are excluded from the highlight",
+      excluded.body?.summary?.excludedCount === 1 &&
+        excluded.body?.excluded?.[0]?.reasons?.some((reason) => reason.includes("USD")),
+    );
+    check(
+      "the next-lowest comparable quotation wins instead",
+      excluded.body?.lowest?.vendorId === nova.id && excluded.body?.lowest?.total === "53850.00",
+    );
+    await prisma.quotation.update({ where: { id: zenRow.id }, data: { currency: "INR" } });
+  } finally {
+    if (prisma) await prisma.$disconnect().catch(() => {});
+  }
+
+  const vendorIsolation = await novaAccount.call("GET", `/rfqs/${rfq1?.id}`);
+  check(
+    "vendor responses never contain another vendor's prices or notes",
+    !JSON.stringify(vendorIsolation.body).includes("51830") &&
+      !JSON.stringify(vendorIsolation.body).includes(zenith.name),
+  );
+
+  const tieRfq = (await procurement("POST", "/rfqs", rfqBody({
+    title: `[smoke] Tie comparison ${stamp}`,
+    vendorIds: [apex.id, zenith.id],
+  }))).body?.rfq;
+  await procurement("POST", `/rfqs/${tieRfq?.id}/publish`);
+  const tieItems = tieRfq.items;
+  const tiePayload = {
+    deliveryDays: 4,
+    taxPercent: "0",
+    shippingAmount: "0",
+    items: tieItems.map((item) => ({ rfqItemId: item.id, unitPrice: "1000" })),
+  };
+  await zenithAccount.call("PUT", `/rfqs/${tieRfq?.id}/quotation`, tiePayload);
+  await sleep(150);
+  await apexAccount.call("PUT", `/rfqs/${tieRfq?.id}/quotation`, tiePayload);
+  const tieComparison = await procurement("GET", `/rfqs/${tieRfq?.id}/comparison`);
+  check(
+    "equal totals pick a single winner deterministically",
+    tieComparison.body?.summary?.comparableCount === 2 &&
+      tieComparison.body?.quotations?.filter((entry) => entry.isLowest).length === 1 &&
+      tieComparison.body?.lowest?.vendorId === zenith.id,
+  );
+
+  const singleRfq = (await procurement("POST", "/rfqs", rfqBody({
+    title: `[smoke] Single quotation ${stamp}`,
+    vendorIds: [apex.id],
+  }))).body?.rfq;
+  await procurement("POST", `/rfqs/${singleRfq?.id}/publish`);
+  await apexAccount.call("PUT", `/rfqs/${singleRfq?.id}/quotation`, {
+    deliveryDays: 3,
+    taxPercent: "5",
+    shippingAmount: "100",
+    items: singleRfq.items.map((item) => ({ rfqItemId: item.id, unitPrice: "500" })),
+  });
+  const singleComparison = await procurement("GET", `/rfqs/${singleRfq?.id}/comparison`);
+  check(
+    "single-submission comparison still highlights the lowest valid quotation",
+    singleComparison.body?.summary?.comparableCount === 1 &&
+      singleComparison.body?.lowest?.vendorId === apex.id &&
+      singleComparison.body?.lowest?.total === "7975.00",
+  );
+
+  const emptyRfq = (await procurement("POST", "/rfqs", rfqBody({
+    title: `[smoke] No quotations ${stamp}`,
+    vendorIds: [apex.id],
+  }))).body?.rfq;
+  await procurement("POST", `/rfqs/${emptyRfq?.id}/publish`);
+  const emptyComparison = await procurement("GET", `/rfqs/${emptyRfq?.id}/comparison`);
+  check(
+    "comparison without submissions reports no valid result",
+    emptyComparison.body?.summary?.quotationCount === 0 &&
+      emptyComparison.body?.summary?.canCompare === false &&
+      emptyComparison.body?.lowest === null,
+  );
+  check(
+    "quotations list without submissions is empty",
+    (await procurement("GET", `/rfqs/${emptyRfq?.id}/quotations`)).body?.quotations?.length === 0,
+  );
+  check("quotation submit for a closed RFQ is rejected", (await novaAccount.call("PUT", `/rfqs/${draft2?.id}/quotation`, {
+    deliveryDays: 3,
+    items: rfqItems.map((item) => ({ rfqItemId: item.id, unitPrice: "10" })),
+  })).status === 409);
+
+  section("11. RFQ filtering, pagination, persistence and headers");
+  const searchRfq = await procurement("GET", `/rfqs?search=${encodeURIComponent(rfq1?.reference)}`);
+  check("search finds the RFQ by reference", searchRfq.body?.total === 1 && searchRfq.body?.items?.[0]?.id === rfq1?.id);
+  check(
+    "unknown RFQ status filter is rejected",
+    (await procurement("GET", "/rfqs?status=bogus")).status === 422,
+  );
+  const openFilter = await procurement("GET", "/rfqs?status=open&pageSize=100");
+  check(
+    "open filter only returns RFQs still accepting quotations",
+    openFilter.status === 200 && openFilter.body?.items?.every((item) => item.effectiveStatus === "open"),
+  );
+  const expiredFilter = await procurement("GET", "/rfqs?status=expired&pageSize=100");
+  check(
+    "expired filter finds RFQs past their deadline",
+    expiredFilter.body?.items?.some((item) => item.id === expiredRfq?.id) &&
+      expiredFilter.body?.items?.every((item) => item.effectiveStatus === "expired"),
+  );
+  const pagedRfqs = await procurement("GET", "/rfqs?page=1&pageSize=2&sort=reference");
+  check(
+    "RFQ pagination returns metadata and at most one page of rows",
+    pagedRfqs.body?.page === 1 && pagedRfqs.body?.pageSize === 2 && (pagedRfqs.body?.items?.length ?? 0) <= 2,
+  );
+  const sortedRfqs = (await procurement("GET", "/rfqs?sort=reference&pageSize=100")).body?.items?.map((item) => item.reference) ?? [];
+  check(
+    "RFQ sorting by reference is deterministic",
+    sortedRfqs.length > 1 && sortedRfqs.every((reference, index) => index === 0 || sortedRfqs[index - 1] <= reference),
+  );
+  check(
+    "RFQ responses are marked no-store",
+    (await procurement("GET", "/rfqs")).cacheControl === "no-store",
+  );
+
+  const vendorRfqList = await novaAccount.call("GET", "/rfqs?pageSize=100");
+  const vendorRfqIds = vendorRfqList.body?.items?.map((item) => item.id) ?? [];
+  check("vendor RFQ list hides drafts", vendorRfqList.body?.items?.every((item) => item.status !== "draft"));
+  check("vendor RFQ list includes assigned RFQs", vendorRfqIds.includes(rfq1?.id));
+  check("vendor RFQ list excludes unassigned RFQs", !vendorRfqIds.includes(singleRfq?.id) && !vendorRfqIds.includes(emptyRfq?.id));
+  check(
+    "vendor RFQ list shows the vendor's own submission state",
+    vendorRfqList.body?.items?.find((item) => item.id === rfq1?.id)?.hasSubmitted === true,
+  );
+
+  const dashboardAfter = await procurement("GET", "/dashboard");
+  check(
+    "dashboard reports live RFQ metrics",
+    dashboardAfter.body?.rfqSummary?.open >= 1 && dashboardAfter.body?.rfqSummary?.quotations >= 2,
+  );
+
+  const freshProcurement = await login("procurement@vendorbridge.dev", "Procure@123");
+  const persistedRfq = await freshProcurement.call("GET", `/rfqs/${rfq1?.id}`);
+  check(
+    "RFQ and quotation survive a new session",
+    persistedRfq.status === 200 &&
+      persistedRfq.body?.rfq?.quotationCount === 2 &&
+      persistedRfq.body?.rfq?.submissions?.filter((entry) => entry.status === "submitted").length === 2,
+  );
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) {

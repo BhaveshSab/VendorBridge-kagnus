@@ -31,6 +31,17 @@ interface DashboardResponse {
   recentVendors?: Vendor[];
   vendor?: Vendor | null;
   hasVendorProfile?: boolean;
+  rfqSummary: {
+    open: number;
+    total?: number;
+    expired?: number;
+    draft?: number;
+    closed?: number;
+    cancelled?: number;
+    quotations?: number;
+    assigned?: number;
+    submitted?: number;
+  };
 }
 
 const metricGridVariants: Variants = {
@@ -44,13 +55,6 @@ const metricCardVariants: Variants = {
 };
 
 const UPCOMING = [
-  {
-    badge: "Coming Soon",
-    title: "RFQs & quotations",
-    description: "Raise requests, invite vendors and compare submitted quotations.",
-    icon: ClipboardList,
-    badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
-  },
   {
     badge: "Planned",
     title: "Approvals, orders & invoices",
@@ -209,10 +213,16 @@ export default function Dashboard() {
           description={`${roleLabel} · Real-time procurement overview`}
           actions={
             isVendor ? (
-              <Link to="/vendors" className="btn btn-ghost btn-sm">
-                <Building2 size={14} />
-                My vendor profile
-              </Link>
+              <>
+                <Link to="/rfqs" className="btn btn-ghost btn-sm">
+                  <ClipboardList size={14} />
+                  My RFQs
+                </Link>
+                <Link to="/vendors" className="btn btn-ghost btn-sm">
+                  <Building2 size={14} />
+                  My vendor profile
+                </Link>
+              </>
             ) : (
               <>
                 <Link to="/vendors" className="btn btn-ghost btn-sm">
@@ -239,9 +249,13 @@ export default function Dashboard() {
         >
           <motion.div variants={metricCardVariants}>
             <StatCard
-              label="Active RFQs"
-              value="—"
-              hint="Scheduled release"
+              label={isVendor ? "Open RFQs" : "Active RFQs"}
+              value={data.rfqSummary?.open ?? 0}
+              hint={
+                isVendor
+                  ? `${data.rfqSummary?.assigned ?? 0} assigned · ${data.rfqSummary?.submitted ?? 0} quoted`
+                  : `${data.rfqSummary?.quotations ?? 0} quotations received`
+              }
               icon={<ClipboardList size={18} />}
             />
           </motion.div>
@@ -308,20 +322,39 @@ export default function Dashboard() {
               </span>
               <ArrowRight size={15} className="ml-auto text-slate-400 group-hover:text-brand-600 group-hover:translate-x-1 transition-all" />
             </Link>
-            <div className="card flex items-center gap-3.5 p-4 opacity-75 border-dashed">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 border border-slate-200">
-                <ClipboardList size={18} />
-              </span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-2 text-[13px] font-bold text-ink">
-                  Create an RFQ
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                    Coming Soon
-                  </span>
+            {permissions?.manageRfqs ? (
+              <Link
+                to="/rfqs/new"
+                className="card card-hover flex items-center gap-3.5 p-4 transition-all hover:border-blue-400 group"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/10 to-indigo-500/20 text-brand-600 border border-blue-200/80 group-hover:scale-105 transition-transform">
+                  <ClipboardList size={18} />
                 </span>
-                <span className="block text-[11px] text-muted">Invite suppliers to submit bids</span>
-              </span>
-            </div>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-bold text-ink group-hover:text-brand-600 transition-colors">
+                    Create an RFQ
+                  </span>
+                  <span className="block text-[11px] text-muted">Invite suppliers to submit quotations</span>
+                </span>
+                <ArrowRight size={15} className="ml-auto text-slate-400 group-hover:text-brand-600 group-hover:translate-x-1 transition-all" />
+              </Link>
+            ) : (
+              <Link
+                to="/rfqs"
+                className="card card-hover flex items-center gap-3.5 p-4 transition-all hover:border-blue-400 group"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/10 to-indigo-500/20 text-brand-600 border border-blue-200/80 group-hover:scale-105 transition-transform">
+                  <ClipboardList size={18} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-bold text-ink group-hover:text-brand-600 transition-colors">
+                    Review RFQs
+                  </span>
+                  <span className="block text-[11px] text-muted">Supplier requests for quotation</span>
+                </span>
+                <ArrowRight size={15} className="ml-auto text-slate-400 group-hover:text-brand-600 group-hover:translate-x-1 transition-all" />
+              </Link>
+            )}
           </div>
         ) : null}
 
@@ -485,13 +518,19 @@ export default function Dashboard() {
             </Card>
 
             <Card className="p-5 border-blue-100 bg-gradient-to-br from-white to-blue-50/30">
-              <p className="text-[13px] font-bold text-ink">Vendor Management Suite</p>
+              <p className="text-[13px] font-bold text-ink">Procurement workspace</p>
               <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-                Authentication, role-aware navigation, the dashboard foundation and complete vendor management are live and ready.
+                Vendor management, RFQ publishing and quotation comparison are live. Approvals and purchase orders remain
+                scheduled for the next milestone.
               </p>
-              <Link to="/vendors" className="btn btn-ghost btn-sm mt-3.5 w-full justify-center">
-                Open full vendor register
-              </Link>
+              <div className="mt-3.5 flex flex-col gap-2">
+                <Link to="/vendors" className="btn btn-ghost btn-sm w-full justify-center">
+                  Open vendor register
+                </Link>
+                <Link to="/rfqs" className="btn btn-ghost btn-sm w-full justify-center">
+                  Open RFQs &amp; quotations
+                </Link>
+              </div>
             </Card>
           </div>
         </div>

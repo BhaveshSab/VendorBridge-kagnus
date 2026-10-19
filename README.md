@@ -1,11 +1,13 @@
 # VendorBridge — Procurement & Vendor Management ERP
 
-Week 1 deliverable for the Kagnus programme: **Foundation & Vendor Management**.
+Weeks 1–2 deliverable for the Kagnus programme: **Foundation & Vendor Management** and
+**RFQs, Quotations & Comparison**.
 VendorBridge is a full-stack application — a React single-page front end talking to an
 Express + PostgreSQL back end through Prisma ORM — implementing authentication, role-aware
-navigation, a procurement dashboard, and complete vendor management. Modules scheduled for Weeks 2–4
-(RFQs, quotations, approvals, orders, invoices, reports, audit) are intentionally not
-implemented; their areas on the dashboard show explicit "available in Week 2/3/4" states.
+navigation, a procurement dashboard, complete vendor management, and the end-to-end
+RFQ → quotation → comparison workflow. Modules scheduled for Weeks 3–4
+(approvals, orders, invoices, reports, audit) are intentionally not
+implemented; their areas on the dashboard show explicit "available in Week 3/4" states.
 
 ---
 
@@ -56,7 +58,8 @@ Other scripts:
 | `npm run db:setup` | Generate Prisma Client, apply migrations, seed an empty development DB and verify counts |
 | `npm run db:studio` | Open Prisma Studio against the configured database |
 | `npm run seed` | Add the demo fixture only when both users and vendors tables are empty; never overwrites existing data |
-| `npm run test:api` | 78-check end-to-end API smoke test (see §7) |
+| `npm run test:api` | 179-check end-to-end API smoke test, Week 1 + Week 2 (see §7) |
+| `node scripts/e2e-week2.mjs` | 74-check Week 2 browser E2E suite (app running + disposable `*e2e*` database) |
 | `npm run db:cleanup-tests` | Remove only `@vendorbridge.test` accounts/vendors created by the test suites |
 | `npm run screenshots` | Regenerate the screenshots in `docs/screenshots/` (needs the app running) |
 | `npm run typecheck` | TypeScript check |
@@ -105,13 +108,14 @@ fixtures only; never use them in production.
 - Role-aware greeting, role label and the four summary cards from the design reference.
 - **Total suppliers**, status totals, recent vendors and category breakdown are fetched from
   `/api/dashboard` and computed from PostgreSQL. Vendors see only their own profile metrics.
-- **Active RFQs**, **Pending approvals** and **PO value** display explicit placeholders because
-  those APIs/modules are not implemented in this milestone.
-- Quick actions: add a vendor, open the vendor register, and a clearly disabled "Create an RFQ"
-  action labelled *Week 2*.
+- **Active RFQs** is live (computed server-side into `rfqSummary`); **Pending approvals** and
+  **PO value** still show explicit `—` / *Scheduled release* placeholders because those modules
+  arrive in Weeks 3–4.
+- Quick actions: add a vendor, open the vendor register, and create an RFQ (enabled in Week 2;
+  staff get the create form, vendors get their invitation list).
 - Vendor register snapshot (five most recently updated vendors) with status chips.
 - Vendor status donut and vendor-by-category breakdown, both computed from stored records.
-- "Scheduled for later weeks" card lists the Week 2/3/4 modules with their scope.
+- "Scheduled for upcoming milestones" card lists the Week 3/4 modules with their scope.
 - Skeleton loaders, empty states and an error state with retry; vendors see their own profile
   instead of the internal register.
 
@@ -140,28 +144,55 @@ fixtures only; never use them in production.
 - Security headers, a CORS allow-list, `x-powered-by` disabled, parameterised Prisma queries and
   foreign keys enforced at the database level.
 
+### 4.5 RFQs, quotations & comparison (Week 2 requirements)
+
+- **Create & publish RFQs** (Admin/Procurement): title, requirements, ordered line items with
+  description, quantity, unit and specifications, a single clearly selected currency, a future
+  submission deadline and vendor assignments. Client validation mirrors the server's Zod rules, so
+  invalid or missing fields produce field-level errors and never create a partial RFQ.
+- **Lifecycle**: `draft → open → closed` (+ `draft|open → cancelled`), `409` on invalid transitions,
+  publishing locks line items and assignments, unique `RFQ-####` references generated atomically,
+  and an open RFQ past its deadline reports an `expired` effective status that refuses submissions.
+- **Vendor visibility**: only assigned vendors can read a published RFQ; unassigned RFQs return
+  `404` (references are never disclosed), and quotation lists/comparison are `403` for vendors.
+- **Quotations**: an assigned vendor submits per-line unit prices, delivery timeline, delivery
+  terms, notes, tax and shipping — one quotation per RFQ, resubmittable as a new revision before
+  the deadline. All money (line totals, subtotal, tax, total) is calculated on the server; the
+  client cannot set vendor id, currency, totals, owner or timestamps.
+- **Quotation register & side-by-side comparison**: per-line vendor prices, delivery timelines and
+  notes shown to authorized staff, server-recomputed totals on a stated basis (same currency, tax
+  and shipping included), the lowest valid comparable quotation highlighted exactly once, and
+  incomparable quotations excluded with explicit reasons. Comparison never awards anything.
+- **Sorting, filters and empty states**: search, lifecycle tabs with counts, sorting and pagination
+  on the RFQ list; explicit zero-quotation, single-quotation and no-comparison states instead of
+  fabricated values.
+- **Persistence**: every view reads PostgreSQL — RFQs, assignments, quotations and comparison
+  results survive reloads, re-login and server restarts; nothing in the front end is hard-coded.
+
 ---
 
 ## 5. Architecture
 
 ```
 src/                 React SPA
-  components/        AppLayout, guards, UI kit, vendor form, charts
+  components/        AppLayout, guards, UI kit, vendor form, RFQ form, charts
   context/           Auth and toast providers
-  lib/               API client, types, formatting, hooks
-  pages/             auth/, Dashboard, Vendors, Profile, NotFound
+  lib/               API client, types, formatting, RFQ helpers, hooks
+  pages/             auth/, Dashboard, Vendors, Profile, RfqList/Create/Detail/Quotation(s)/Comparison, NotFound
 prisma/
   schema.prisma      PostgreSQL models, relations and indexes
-  migrations/        committed SQL migrations (init included)
+  migrations/        committed SQL migrations (init, add_rate_limits, add_rfq_quotations)
 server/
   auth.js            password hashing, JWT, guards, validation error mapping
   db.js              shared Prisma Client, sequences and user mapping
   seed.js            demo users and vendors
   serializers.js     response shapes and role permissions
-  routes/            auth.js, vendors.js, dashboard.js
+  money.js           server-side rounding and quotation money totals
+  routes/            auth.js, vendors.js, rfqs.js, dashboard.js
   index.js           Express app, security headers, SPA fallback
 scripts/
-  smoke-test.mjs     end-to-end API test suite
+  smoke-test.mjs     end-to-end API test suite (Week 1 + Week 2, 179 checks)
+  e2e-week2.mjs      Week 2 browser E2E suite (74 checks)
   screenshots.mjs    screenshot capture for the submission pack
 ```
 
@@ -177,6 +208,17 @@ scripts/
 | `POST` | `/api/auth/reset-password` | Public (needs a valid token) |
 | `GET` | `/api/auth/dev-reset-link` | Development only (disabled in production) |
 | `GET` | `/api/dashboard` | Admin/Procurement/Manager: aggregate metrics; Vendor: own profile metrics only |
+| `GET` | `/api/rfqs` | Signed in (vendors: only published RFQs assigned to them; search, status, sort, pagination) |
+| `POST` | `/api/rfqs` | Admin, Procurement |
+| `GET` | `/api/rfqs/:id` | Signed in (vendor: assigned + published only, otherwise `404`) |
+| `PUT` | `/api/rfqs/:id` | Admin, Procurement (draft only; `409` after publish) |
+| `PUT` | `/api/rfqs/:id/vendors` | Admin, Procurement (draft only) |
+| `POST` | `/api/rfqs/:id/publish` | Admin, Procurement |
+| `POST` | `/api/rfqs/:id/close` | Admin, Procurement |
+| `POST` | `/api/rfqs/:id/cancel` | Admin, Procurement |
+| `GET` | `/api/rfqs/:id/quotations` | Admin, Procurement, Manager (vendors `403`) |
+| `GET` | `/api/rfqs/:id/comparison` | Admin, Procurement, Manager (vendors `403`) |
+| `PUT` | `/api/rfqs/:id/quotation` | Vendor assigned to the RFQ (create or revise; identity from session, never from payload) |
 | `GET` | `/api/vendors` | Signed in (vendors see only themselves) |
 | `GET` | `/api/vendors/meta` | Admin, Procurement, Manager (vendors are denied global metadata) |
 | `GET` | `/api/vendors/:id` | Signed in (vendors only their own) |
@@ -192,6 +234,10 @@ scripts/
 | View dashboard | ✅ | ✅ | ✅ | ✅ (own profile) |
 | View vendor register | ✅ | ✅ | ✅ | own record only |
 | Create / update / delete vendors | ✅ | ✅ | ❌ | ❌ |
+| Create / edit / publish / close / cancel RFQs | ✅ | ✅ | ❌ | ❌ |
+| View RFQs | all | all | all | assigned + published only |
+| Submit / revise quotations | ❌ | ❌ | ❌ | ✅ (own, assigned) |
+| View all quotations & comparison | ✅ | ✅ | ✅ (read-only) | ❌ |
 
 ---
 
@@ -208,7 +254,12 @@ development-only fixtures and must never be loaded into production.
 | `User` | `users` | Accounts, role, bcrypt password hash |
 | `PasswordReset` | `password_resets` | Single-use reset tokens with expiry |
 | `Vendor` | `vendors` | Vendor master data, status, rating, optional account link |
-| `Counter` | `counters` | Atomic sequence for vendor codes (`VND`) |
+| `Rfq` | `rfqs` | Reference, title, currency, status, deadline, creator, lifecycle timestamps |
+| `RfqItem` | `rfq_items` | Ordered requested lines: description, quantity, unit, specifications |
+| `RfqAssignment` | `rfq_assignments` | RFQ ↔ vendor join, `UNIQUE(rfq_id, vendor_id)` |
+| `Quotation` | `quotations` | One per vendor per RFQ: delivery, notes, tax/shipping/total, revision |
+| `QuotationItem` | `quotation_items` | Unit price + server-calculated line total per RFQ line |
+| `Counter` | `counters` | Atomic sequence for vendor codes (`VND`) and RFQ references (`RFQ`) |
 
 `Vendor` has two relations to `User`: the vendor's own account (`user_id`) and the staff member
 who created the record (`created_by`), both `ON DELETE SET NULL`.
@@ -222,7 +273,9 @@ npm run db:studio                        # browse data
 ```
 
 Migrations live in `prisma/migrations/` and are part of the repository. The initial migration
-(`init`) creates the core tables, indexes and foreign keys. `npm run seed` inserts the demo fixture
+(`init`) creates the core tables, indexes and foreign keys; `add_rate_limits` and
+`20261019140000_add_rfq_quotations` follow, the latter being additive only (five new tables,
+indexes, foreign keys and CHECK constraints — no Week 1 table is altered). `npm run seed` inserts the demo fixture
 only into a development database with no users or vendors. It never overwrites existing records.
 A destructive reseed is blocked unless `ALLOW_DESTRUCTIVE_SEED=true` is explicitly set, and is
 never permitted when `NODE_ENV=production`.
@@ -239,7 +292,7 @@ npm run test:api     # in another
 
 The suite runs against the real PostgreSQL database configured in `DATABASE_URL`.
 
-`scripts/smoke-test.mjs` performs **78 assertions** against the running API when executed, covering:
+`scripts/smoke-test.mjs` performs **179 assertions** against the running API when executed, covering:
 
 1. Authentication — health readiness, 401s for anonymous access, wrong-password rejection,
    HttpOnly cookie session refresh, all four roles signing in, no JWT/password hashes in JSON responses,
@@ -256,13 +309,30 @@ The suite runs against the real PostgreSQL database configured in `DATABASE_URL`
    role even when a privileged role is submitted, vendor sign-up creating a Pending profile,
    duplicate email conflict, reset token issuance, single-use tokens, password change and sign-in
    with the new password.
-6. Scope guard — Week 2–4 endpoints (`/rfqs`, `/quotations`, `/approvals`, `/purchase-orders`,
-   `/invoices`, `/reports`, `/activity`) are not exposed.
+6. Module scope guard — Weeks 3–4 endpoints (`/approvals`, `/purchase-orders`, `/invoices`,
+   `/reports`, `/activity`) are not exposed; `/api/rfqs` is live and covered by the checks below.
 7. Persistence — created vendors survive into a new session, and deletion is permanent.Note: the smoke test registers throwaway accounts under the reserved `@vendorbridge.test` domain.
 Run `npm run db:cleanup-tests` afterwards to delete only those records; seeded demo data and real
 vendor records are never touched. Only if the configured database is disposable development data,
 explicitly set `ALLOW_DESTRUCTIVE_SEED=true` before using `npm run seed -- --force` to reset it.
 That command truncates application tables and should not be used on shared data.
+
+Week 2 coverage inside the same suite: RFQ creation and Zod validation (422 field errors),
+client-supplied `status`/`reference`/`createdBy` ignored, lifecycle `409`s (duplicate publish,
+edit/assign after publish, double close), publish rules (≥1 line, ≥1 vendor, future deadline),
+unique references under concurrent creation, vendor scoping (unassigned `404`, unassigned submit
+`403`, quotation/comparison `403` for vendors), server-computed money and tamper resistance,
+single-submission/revision policy, deadline-expired `409`, comparison sorting and lowest-price
+highlight with exclusion reasons, currency-mismatch exclusion, filters, pagination metadata,
+`Cache-Control: no-store`, and persistence across a fresh session.
+
+`scripts/e2e-week2.mjs` is a separate **74-check browser suite** driven through a real browser
+against the running app: the procurement → two vendors → comparison workflow, negative
+authorization cases with status codes, empty/boundary states, and read-only database verification.
+It refuses to run unless `DATABASE_URL` points at a loopback database whose name contains `e2e`,
+and it deletes only the RFQs/quotations it created. Full report:
+[`docs/WEEK2_E2E_VERIFICATION.md`](docs/WEEK2_E2E_VERIFICATION.md) with machine-readable results in
+`docs/verification/week2/results.json`.
 
 Front-end type-checking runs as part of `npm run build` (`tsc -b`).
 
@@ -283,6 +353,17 @@ set `CHROME_PATH` if Brave/Chrome is installed elsewhere).
 | [Add vendor form](docs/screenshots/06-vendor-form.png) · [Vendor details](docs/screenshots/07-vendor-detail.png) | [Profile & security](docs/screenshots/08-profile.png) |
 | [Forgot password](docs/screenshots/03-forgot-password.png) | [Vendor dashboard](docs/screenshots/09-vendor-dashboard.png) |
 
+| RFQ & quotation workflow (Week 2) | Vendor side (Week 2) |
+| --- | --- |
+| [RFQ list](docs/screenshots/10-rfq-list.png) | [Vendor RFQ list](docs/screenshots/15-vendor-rfq-list.png) |
+| [Create RFQ](docs/screenshots/14-create-rfq.png) | [Vendor quotation form](docs/screenshots/16-vendor-quotation-form.png) |
+| [RFQ detail](docs/screenshots/11-rfq-detail.png) | [Vendor RFQ detail](docs/screenshots/17-vendor-rfq-detail.png) |
+| [Quotation register](docs/screenshots/12-quotations.png) | — |
+| [Quotation comparison](docs/screenshots/13-quotation-comparison.png) | — |
+
+E2E evidence (validation errors, empty states, expiry, revision, comparison) lives in
+[`docs/verification/week2/`](docs/verification/week2/) — 17 captures plus `results.json`.
+
 ---
 
 ## 9. Design notes
@@ -295,14 +376,37 @@ and short motion that respects `prefers-reduced-motion`.
 
 ---
 
-## 10. Known Limitations
+## 10. Known limitations (documented honestly)
 
-* **Dependency audit:** `npm audit --omit=dev` reports the Prisma CLI's `deepmerge-ts` advisory (high). The fix requires a Prisma 7 upgrade, which was not applied to maintain project stability.
-* **Neon connection resets:** The managed database occasionally drops idle connections, which surfaces as a `503 database_unavailable` on the first request after the drop. The API is built to return explicit errors rather than fabricating data, and subsequent retries succeed.
-* **Role provisioning:** Public registration is currently limited to Vendor accounts. Procurement and Manager accounts must be provisioned directly via the database, as there is no admin invitation UI in the current milestone.
-* **Automated UI tests:** None yet. Verification currently relies on the 78-check API suite plus manual browser walkthroughs (Chrome at 1440×900 and 390×844) covering route protection, state management, and form validation.
-* **Future Scope:** Modules for Manager Approvals, Purchase Orders, Invoices, and Audit Logs remain out of scope for the current milestone and display explicit empty states.
-  
+- **Email delivery**: password-reset links are dispatched through Resend when `RESEND_API_KEY` is
+  set (sender configurable via `EMAIL_FROM`). Without a provider configured, development runs
+  write the message to a local mail outbox (`.mail-outbox.jsonl`). Production must configure
+  `RESEND_API_KEY` and `CLIENT_ORIGIN`. The optional `/api/auth/dev-reset-link` helper returns a
+  live token, so it is disabled unless `ALLOW_DEV_RESET_LINK=true` **and** `NODE_ENV` is not
+  `production`; the sign-in UI only renders its local helper when the server reports it enabled.
+- **Dependency audit**: `npm audit --omit=dev` reports the Prisma CLI's `deepmerge-ts` advisory
+  (high). The fix is a Prisma 7 upgrade, which was not applied without approval.
+- **Neon connection resets**: the managed database occasionally drops an idle connection, which
+  surfaces as a 503 `database_unavailable` on the first request after the drop; retrying the same
+  action succeeds. The API returns an explicit error instead of fabricating data.
+- **Role provisioning**: public registration is limited to Vendor accounts. Procurement and Manager
+  accounts must be provisioned outside public sign-up; there is no admin invitation UI or email
+  verification workflow in Week 1.
+- **Weeks 3–4 are not implemented**: approvals, purchase orders, invoices, reports and the audit
+  log are deliberately out of scope (those routes return `404`). Their dashboard areas show
+  explicit empty states instead of fabricated data. RFQ attachments (drag-and-drop uploads) and
+  per-line tax/shipping from the wireframe are also out of scope — tax, shipping and delivery are
+  quotation-level, with per-line prices.
+- **Database hosting**: the API needs a reachable PostgreSQL instance; there is no embedded or
+  offline fallback. The current database is a managed Neon instance whose connection string lives
+  in `.env`, so it must be provisioned before the app can start.
+- **Automated UI tests**: the 74-check Week 2 browser suite (`scripts/e2e-week2.mjs`, Chromium at
+  1440×900) covers the RFQ workflow end to end; Week 1 flows still rely on the 179-check API suite
+  plus a manual walkthrough. The E2E harness only accepts a loopback database whose name contains
+  `e2e` — run it against staging by mistake and it will refuse rather than write there.
+- **Deployment**: no hosted URL; run locally with `npm run dev` or `npm start`.
+- **Bundle size**: route-level code splitting (`React.lazy` + `<Suspense>`) builds one chunk per
+  page, so users only download the code for the route they visit.
 
 ---
 
@@ -320,10 +424,12 @@ and short motion that respects `prefers-reduced-motion`.
 | Vendor data persisted in the database | ✅ PostgreSQL via Prisma |
 | Vendor management restricted to authorized roles | ✅ |
 | README with setup, configuration, run instructions | ✅ this file |
-| Screenshots of authentication, dashboard and vendor management | ✅ 9 screens in `docs/screenshots/` |
+| Screenshots of authentication, dashboard and vendor management | ✅ 17 screens in `docs/screenshots/` (9 Week 1 + 8 Week 2) |
+| RFQ → quotation → comparison workflow | ✅ implemented & verified end to end (74-check browser suite, [report](docs/WEEK2_E2E_VERIFICATION.md)) |
+| Week 2 completion report | ✅ [docs/WEEK2_COMPLETION_REPORT.md](docs/WEEK2_COMPLETION_REPORT.md) |
 | Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) — features, commands actually run, audit findings and limitations |
-| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `arena/90eb331b-vendorbridge-kagnus` |
-| PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema; 78 API checks pass against it |
+| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `feat/week2-rfq-quotations` |
+| PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema; 179 API checks pass against it |
 
 ### Getting the code
 

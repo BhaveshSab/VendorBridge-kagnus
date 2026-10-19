@@ -141,6 +141,12 @@ const statusDotColors: Record<string, string> = {
   Draft: "bg-slate-400",
   Blocked: "bg-rose-500",
   Rejected: "bg-rose-500",
+  Open: "bg-blue-500",
+  Closed: "bg-slate-400",
+  Cancelled: "bg-slate-400",
+  Expired: "bg-orange-500",
+  Submitted: "bg-emerald-500",
+  Awaiting: "bg-amber-500",
 };
 
 export function Badge({ status, className }: { status: string; className?: string }) {

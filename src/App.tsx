@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
-import { PublicOnly, RequireAuth } from "./components/guards";
+import { PublicOnly, RequireAuth, RequireRole } from "./components/guards";
 import { Spinner } from "./components/ui";
 
 // Route-level code splitting: each page is its own chunk and is only
@@ -12,6 +12,12 @@ const ForgotPassword = lazy(() => import("./pages/auth/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/auth/ResetPassword"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Vendors = lazy(() => import("./pages/Vendors"));
+const RfqList = lazy(() => import("./pages/RfqList"));
+const RfqCreate = lazy(() => import("./pages/RfqCreate"));
+const RfqDetail = lazy(() => import("./pages/RfqDetail"));
+const RfqQuotation = lazy(() => import("./pages/RfqQuotation"));
+const RfqQuotations = lazy(() => import("./pages/RfqQuotations"));
+const RfqComparison = lazy(() => import("./pages/RfqComparison"));
 const Profile = lazy(() => import("./pages/Profile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -52,6 +58,48 @@ export default function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/vendors" element={<Vendors />} />
+            <Route path="/rfqs" element={<RfqList />} />
+            <Route
+              path="/rfqs/new"
+              element={
+                <RequireRole roles={["admin", "procurement"]}>
+                  <RfqCreate />
+                </RequireRole>
+              }
+            />
+            <Route path="/rfqs/:id" element={<RfqDetail />} />
+            <Route
+              path="/rfqs/:id/edit"
+              element={
+                <RequireRole roles={["admin", "procurement"]}>
+                  <RfqCreate />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/rfqs/:id/quotation"
+              element={
+                <RequireRole roles={["vendor"]}>
+                  <RfqQuotation />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/rfqs/:id/quotations"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager"]}>
+                  <RfqQuotations />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/rfqs/:id/compare"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager"]}>
+                  <RfqComparison />
+                </RequireRole>
+              }
+            />
             <Route path="/profile" element={<Profile />} />
             <Route path="*" element={<NotFound />} />
           </Route>
