@@ -1,4 +1,4 @@
-import { ArrowRight, Eye, EyeOff, Info } from "lucide-react";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthLayout } from "../../components/AuthLayout";
@@ -6,14 +6,14 @@ import { Button, Field, Input, Select, Textarea } from "../../components/ui";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { ApiError, errorMessage } from "../../lib/api";
-import { COUNTRIES, ROLE_OPTIONS, VENDOR_CATEGORIES } from "../../lib/constants";
+import { COUNTRIES, VENDOR_CATEGORIES } from "../../lib/constants";
 
 type FormState = {
   firstName: string;
   lastName: string;
   email: string;
   phone: string;
-  role: "procurement" | "manager" | "vendor";
+  role: "vendor";
   country: string;
   companyName: string;
   category: string;
@@ -27,7 +27,7 @@ const initialForm: FormState = {
   lastName: "",
   email: "",
   phone: "",
-  role: "procurement",
+  role: "vendor",
   country: "India",
   companyName: "",
   category: "IT Equipment",
@@ -86,12 +86,7 @@ export default function Register() {
         companyName: form.companyName.trim(),
         category: form.category,
       });
-      toast.success(
-        "Account created",
-        form.role === "vendor"
-          ? "Your vendor profile is pending verification."
-          : "You are signed in to VendorBridge.",
-      );
+      toast.success("Account created", "Your vendor profile is pending verification.");
       navigate("/dashboard", { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields);
@@ -100,8 +95,6 @@ export default function Register() {
       setLoading(false);
     }
   }
-
-  const isVendor = form.role === "vendor";
 
   return (
     <AuthLayout
@@ -112,7 +105,7 @@ export default function Register() {
         <p className="eyebrow mb-2">Get started</p>
         <h1 className="text-[26px] font-black tracking-[-0.03em] text-ink sm:text-[30px]">Create your VendorBridge account</h1>
         <p className="mt-1.5 text-[13px] text-muted">
-          Register as procurement staff, an approval manager, or an enterprise supplier.
+          Create a vendor account to submit your company for onboarding. Staff roles are assigned by an administrator.
         </p>
       </div>
 
@@ -168,18 +161,8 @@ export default function Register() {
               placeholder="+91 98765 43210"
             />
           </Field>
-          <Field label="Role" htmlFor="role" error={errors.role} required>
-            <Select
-              id="role"
-              value={form.role}
-              onChange={(event) => update("role", event.target.value as FormState["role"])}
-            >
-              {ROLE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
+          <Field label="Account type" htmlFor="role" required>
+            <Input id="role" value="Vendor" readOnly />
           </Field>
           <Field label="Country" htmlFor="country" error={errors.country} required>
             <Select
@@ -195,41 +178,28 @@ export default function Register() {
             </Select>
           </Field>
 
-          {isVendor ? (
-            <>
-              <Field label="Company / Entity name" htmlFor="companyName" error={errors.companyName} required>
-                <Input
-                  id="companyName"
-                  value={form.companyName}
-                  onChange={(event) => update("companyName", event.target.value)}
-                  invalid={Boolean(errors.companyName)}
-                  placeholder="e.g. Nova Office Supplies Pvt Ltd"
-                />
-              </Field>
-              <Field label="Supply category" htmlFor="category" error={errors.category}>
-                <Select
-                  id="category"
-                  value={form.category}
-                  onChange={(event) => update("category", event.target.value)}
-                >
-                  {VENDOR_CATEGORIES.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-            </>
-          ) : (
-            <div className="sm:col-span-2">
-              <div className="flex gap-2.5 rounded-xl border border-blue-200 bg-blue-50/70 p-3">
-                <Info size={16} className="mt-0.5 shrink-0 text-brand-600" aria-hidden />
-                <p className="text-[12px] leading-relaxed text-brand-900">
-                  {ROLE_OPTIONS.find((option) => option.value === form.role)?.hint}. Role authorizations are securely enforced at the API layer.
-                </p>
-              </div>
-            </div>
-          )}
+          <Field label="Company / Entity name" htmlFor="companyName" error={errors.companyName} required>
+            <Input
+              id="companyName"
+              value={form.companyName}
+              onChange={(event) => update("companyName", event.target.value)}
+              invalid={Boolean(errors.companyName)}
+              placeholder="e.g. Nova Office Supplies Pvt Ltd"
+            />
+          </Field>
+          <Field label="Supply category" htmlFor="category" error={errors.category}>
+            <Select
+              id="category"
+              value={form.category}
+              onChange={(event) => update("category", event.target.value)}
+            >
+              {VENDOR_CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
           <Field
             label="Password"
@@ -290,7 +260,7 @@ export default function Register() {
         </div>
 
         <Button type="submit" className="mt-6 w-full btn-lg justify-center shadow-md" loading={loading} icon={<ArrowRight size={15} />}>
-          {loading ? "Creating account…" : isVendor ? "Register as enterprise vendor" : "Create procurement account"}
+          {loading ? "Creating account…" : "Register as enterprise vendor"}
         </Button>
 
         <p className="mt-5 text-center text-[12px] text-muted">

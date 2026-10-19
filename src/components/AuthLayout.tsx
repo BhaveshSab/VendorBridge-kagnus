@@ -1,3 +1,4 @@
+import { motion, type Variants } from "framer-motion";
 import { BadgeCheck, Building2, ClipboardCheck, ShieldCheck, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -18,6 +19,16 @@ const highlights = [
     text: "Every vendor modification, status change and procurement award is tracked.",
   },
 ];
+
+const highlightListVariants: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.1, delayChildren: 0.08 } },
+};
+
+const highlightCardVariants: Variants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
+};
 
 export function AuthLayout({
   children,
@@ -66,10 +77,16 @@ export function AuthLayout({
             VendorBridge brings supplier onboarding, compliance verification, and vendor management into one governed workspace.
           </p>
 
-          <ul className="mt-8 space-y-3">
+          <motion.ul
+            className="mt-8 space-y-3"
+            variants={highlightListVariants}
+            initial="hidden"
+            animate="visible"
+          >
             {highlights.map(({ icon: Icon, title, text }) => (
-              <li
+              <motion.li
                 key={title}
+                variants={highlightCardVariants}
                 className="flex items-start gap-3.5 p-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] hover:border-blue-400/30 transition-all duration-200 group"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-400/25 text-blue-300 group-hover:scale-105 group-hover:text-white group-hover:bg-blue-600 transition-all shadow-xs">
@@ -79,9 +96,9 @@ export function AuthLayout({
                   <span className="block text-[13.5px] font-semibold text-white tracking-tight">{title}</span>
                   <span className="mt-0.5 block text-[12px] leading-relaxed text-slate-300/80">{text}</span>
                 </div>
-              </li>
+              </motion.li>
             ))}
-          </ul>
+          </motion.ul>
         </div>
 
         <div className="relative z-10 mt-8 flex items-center justify-between border-t border-slate-800/80 pt-5 text-[11px] text-slate-400">

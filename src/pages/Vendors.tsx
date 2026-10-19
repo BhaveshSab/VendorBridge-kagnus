@@ -79,7 +79,7 @@ export default function Vendors() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  const meta = useApi<VendorMeta>("/vendors/meta");
+  const meta = useApi<VendorMeta>(isVendor ? null : "/vendors/meta");
   const list = useApi<VendorListResponse>(isVendor ? "/vendors" : "/vendors", {
     search: debouncedSearch,
     status,

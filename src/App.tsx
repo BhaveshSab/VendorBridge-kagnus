@@ -43,22 +43,9 @@ export default function App() {
             </PublicOnly>
           }
         />
-        <Route
-          path="/forgot-password"
-          element={
-            <PublicOnly>
-              <ForgotPassword />
-            </PublicOnly>
-          }
-        />
-        <Route
-          path="/reset-password"
-          element={
-            <PublicOnly>
-              <ResetPassword />
-            </PublicOnly>
-          }
-        />
+        {/* Password recovery must also work from Profile for signed-in users. */}
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>

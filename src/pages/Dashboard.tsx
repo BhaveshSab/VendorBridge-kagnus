@@ -1,3 +1,4 @@
+import { motion, type Variants } from "framer-motion";
 import {
   ArrowRight,
   BadgeCheck,
@@ -31,6 +32,16 @@ interface DashboardResponse {
   vendor?: Vendor | null;
   hasVendorProfile?: boolean;
 }
+
+const metricGridVariants: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.1 } },
+};
+
+const metricCardVariants: Variants = {
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
+};
 
 const UPCOMING = [
   {
@@ -107,6 +118,7 @@ function CategoryList({ items, total }: { items: { name: string; count: number }
     <ul className="space-y-3">
       {items.slice(0, 6).map((item) => {
         const percent = Math.round((item.count / Math.max(total, 1)) * 100);
+        const barWidth = Math.max(6, Math.round((item.count / max) * 100));
         return (
           <li key={item.name} className="p-1.5 rounded-lg hover:bg-slate-50/80 transition-colors">
             <div className="mb-1.5 flex items-baseline justify-between gap-2">
@@ -116,9 +128,11 @@ function CategoryList({ items, total }: { items: { name: string; count: number }
               </span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 shadow-inner">
-              <div
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${Math.max(6, Math.round((item.count / max) * 100))}%` }}
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${barWidth}%` }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+                className="h-full bg-gradient-to-r from-violet-500 to-indigo-600 rounded-full"
               />
             </div>
           </li>
@@ -217,33 +231,51 @@ export default function Dashboard() {
         />
 
         {/* Metric Cards */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            label="Active RFQs"
-            value="—"
-            hint="Scheduled release"
-            icon={<ClipboardList size={18} />}
-          />
-          <StatCard
-            label="Pending approvals"
-            value="—"
-            hint="Scheduled release"
-            icon={<BadgeCheck size={18} />}
-          />
-          <StatCard
-            label="PO value"
-            value="—"
-            hint="Scheduled release"
-            icon={<IndianRupee size={18} />}
-          />
-          <StatCard
-            label={isVendor ? "Suppliers on register" : "Active vendors"}
-            value={isVendor ? data.totalVendors : activeVendors}
-            hint={isVendor ? "Across all categories" : `${pendingVendors} pending review`}
-            icon={<Users size={18} />}
-            trend={{ value: `${Math.round(((activeVendors || 1) / Math.max(data.totalVendors, 1)) * 100)}% active`, positive: true }}
-          />
-        </div>
+        <motion.div
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          variants={metricGridVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <motion.div variants={metricCardVariants}>
+            <StatCard
+              label="Active RFQs"
+              value="—"
+              hint="Scheduled release"
+              icon={<ClipboardList size={18} />}
+            />
+          </motion.div>
+          <motion.div variants={metricCardVariants}>
+            <StatCard
+              label="Pending approvals"
+              value="—"
+              hint="Scheduled release"
+              icon={<BadgeCheck size={18} />}
+            />
+          </motion.div>
+          <motion.div variants={metricCardVariants}>
+            <StatCard
+              label="PO value"
+              value="—"
+              hint="Scheduled release"
+              icon={<IndianRupee size={18} />}
+            />
+          </motion.div>
+          <motion.div variants={metricCardVariants}>
+            <StatCard
+              label={isVendor ? "My supplier profile" : "Total suppliers"}
+              value={data.totalVendors}
+              hint={
+                isVendor
+                  ? data.hasVendorProfile
+                    ? "Linked to your account"
+                    : "No linked profile"
+                  : `${activeVendors} active · ${pendingVendors} pending`
+              }
+              icon={<Users size={18} />}
+            />
+          </motion.div>
+        </motion.div>
 
         {/* Quick Action Tiles */}
         {!isVendor ? (
@@ -298,7 +330,7 @@ export default function Dashboard() {
           <div className="min-w-0 space-y-5 lg:col-span-2">
             {isVendor ? (
               data.vendor ? (
-                <Card className="overflow-hidden">
+                <Card className="overflow-hidden card-hover">
                   <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line bg-gradient-to-r from-blue-50/40 to-white px-5 py-4">
                     <div className="flex items-start gap-3.5">
                       <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-[15px] font-bold text-white shadow-xs">
@@ -426,7 +458,9 @@ export default function Dashboard() {
             <Card className="overflow-hidden">
               <div className="border-b border-line bg-slate-50/50 px-5 py-3.5">
                 <h2 className="text-[13px] font-bold text-ink">Vendor status breakdown</h2>
-                <p className="text-[11px] text-muted">Onboarding health across the register</p>
+                <p className="text-[11px] text-muted">
+                  {isVendor ? "Your supplier profile status" : "Onboarding health across the register"}
+                </p>
               </div>
               <div className="px-5 py-5">
                 {statusSegments.length > 0 ? (

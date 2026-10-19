@@ -2,7 +2,8 @@ import { hashPassword } from "./auth.js";
 import { now, prisma } from "./db.js";
 
 export async function isDatabaseEmpty() {
-  return (await prisma.user.count()) === 0;
+  const [userCount, vendorCount] = await Promise.all([prisma.user.count(), prisma.vendor.count()]);
+  return userCount === 0 && vendorCount === 0;
 }
 
 async function resetTables() {
@@ -12,6 +13,14 @@ async function resetTables() {
 }
 
 export async function seed({ force = false } = {}) {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Demo seed data is disabled in production.");
+  }
+  if (force && process.env.ALLOW_DESTRUCTIVE_SEED !== "true") {
+    throw new Error(
+      "Refusing to truncate application data. Set ALLOW_DESTRUCTIVE_SEED=true only for a disposable development database.",
+    );
+  }
   if (force) await resetTables();
   if (!(await isDatabaseEmpty())) return false;
 
@@ -158,7 +167,9 @@ if (process.argv[1] && process.argv[1].endsWith("seed.js")) {
     const force = process.argv.includes("--force");
     const seeded = await seed({ force });
     console.log(
-      seeded ? "Seeded VendorBridge demo data into PostgreSQL." : "Database already contains data. Use --force to reseed.",
+      seeded
+        ? "Seeded VendorBridge development data into PostgreSQL."
+        : "Database already contains users or vendors; existing data was left unchanged.",
     );
     await prisma.$disconnect();
   } catch (error) {

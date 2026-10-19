@@ -22,6 +22,38 @@ import { PERMISSIONS, roleLabel, vendorOut } from "../serializers.js";
 
 const router = Router();
 
+function resetAppOrigin(req) {
+  const configuredOrigins = (process.env.CLIENT_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const candidate =
+    process.env.NODE_ENV === "production"
+      ? configuredOrigins[0]
+      : req.get("origin") || configuredOrigins[0] || "http://localhost:5173";
+
+  if (!candidate) {
+    throw new Error("CLIENT_ORIGIN must be configured in production to create password reset links.");
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error("CLIENT_ORIGIN must be a valid absolute URL.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("CLIENT_ORIGIN must use HTTP or HTTPS.");
+  }
+  if (
+    process.env.NODE_ENV === "production" &&
+    (parsed.protocol !== "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname))
+  ) {
+    throw new Error("CLIENT_ORIGIN must be a public HTTPS app URL in production.");
+  }
+  return parsed.origin;
+}
+
 // Persistent rate limiting (Redis when REDIS_URL is set, otherwise the
 // database) instead of an in-memory Map — counters survive restarts and are
 // shared across Node.js instances.
@@ -51,9 +83,8 @@ const registerSchema = z.object({
   lastName: z.string().trim().min(2, "Enter your last name."),
   email: emailSchema,
   phone: z.string().trim().min(7, "Enter a valid phone number.").max(24, "Phone number is too long."),
-  role: z.enum(["procurement", "manager", "vendor"], {
-    errorMap: () => ({ message: "Choose a valid role." }),
-  }),
+  // Role is intentionally omitted from the public schema; extra client-supplied
+  // role fields are stripped and every public registration becomes a vendor.
   country: z.string().trim().min(2, "Enter your country."),
   additionalInfo: z.string().trim().max(500).optional().default(""),
   password: passwordSchema,
@@ -70,7 +101,7 @@ router.post("/register", async (req, res) => {
       fields: { email: "This email is already registered." },
     });
   }
-  if (data.role === "vendor" && !data.companyName) {
+  if (!data.companyName) {
     throw new ApiError(422, "Please add your company name.", {
       code: "validation_failed",
       fields: { companyName: "Company name is required for vendor accounts." },
@@ -85,47 +116,45 @@ router.post("/register", async (req, res) => {
         email: data.email,
         phone: data.phone,
         country: data.country,
-        role: data.role,
+        role: "vendor",
         additionalInfo: data.additionalInfo || null,
         passwordHash: hashPassword(data.password),
         createdAt: now(),
       },
     });
 
-    if (data.role === "vendor") {
-      const seq = await nextSequence("VND", tx);
-      await tx.vendor.create({
-        data: {
-          code: `VND-${String(seq).padStart(3, "0")}`,
-          name: data.companyName,
-          category: data.category || "General",
-          email: data.email,
-          phone: data.phone,
-          country: data.country,
-          contactName: displayName(user),
-          status: "Pending",
-          rating: 0,
-          notes: "Self-registered vendor account — awaiting verification.",
-          userId: user.id,
-          createdAt: now(),
-          updatedAt: now(),
-        },
-      });
-    }
+    const seq = await nextSequence("VND", tx);
+    await tx.vendor.create({
+      data: {
+        code: `VND-${String(seq).padStart(3, "0")}`,
+        name: data.companyName,
+        category: data.category || "General",
+        email: data.email,
+        phone: data.phone,
+        country: data.country,
+        contactName: displayName(user),
+        status: "Pending",
+        rating: 0,
+        notes: "Self-registered vendor account — awaiting verification.",
+        userId: user.id,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+    });
 
     return user;
   });
 
   const token = signToken(created);
   setSessionCookie(res, token);
-  res.status(201).json({ token, expiresIn: COOKIE_MAX_AGE, ...(await sessionPayload(created)) });
+  res.status(201).json({ expiresIn: COOKIE_MAX_AGE, ...(await sessionPayload(created)) });
 });
 
 async function sessionPayload(userRow) {
   const vendorRow = await currentVendorFor({ id: userRow.id });
   return {
     user: publicUser(userRow),
-    vendor: vendorOut(vendorRow),
+    vendor: vendorOut(vendorRow, { includeInternalNotes: userRow.role !== "vendor" }),
     permissions: PERMISSIONS[userRow.role],
     roleLabel: roleLabel(userRow.role),
   };
@@ -144,7 +173,7 @@ router.post("/login", loginLimiter, async (req, res) => {
   }
   const token = signToken(user);
   setSessionCookie(res, token);
-  res.json({ token, expiresIn: COOKIE_MAX_AGE, ...(await sessionPayload(user)) });
+  res.json({ expiresIn: COOKIE_MAX_AGE, ...(await sessionPayload(user)) });
 });
 
 router.post("/logout", (req, res) => {
@@ -190,9 +219,9 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
 
   // Deliver the reset link by email (Resend in production, local mail outbox
   // during development). The token is never returned in the response body.
-  const appUrl = (process.env.CLIENT_ORIGIN || "http://localhost:5173").split(",")[0].trim();
-  const resetUrl = `${appUrl}/reset-password?token=${token}`;
   try {
+    const appUrl = resetAppOrigin(req);
+    const resetUrl = `${appUrl}/reset-password?token=${token}`;
     await sendPasswordResetEmail({ to: user.email, name: displayName(user), resetUrl });
   } catch (error) {
     // Never leak delivery state (or the token) through the API — log and keep
@@ -205,6 +234,10 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
 // Development helper: enables browser users to receive/click the reset link
 // without requiring an active third-party transactional email service.
 router.get("/dev-reset-link", async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    throw new ApiError(404, "API route not found.", { code: "not_found" });
+  }
+
   const email = String(req.query.email || "").trim().toLowerCase();
   if (!email) {
     return res.status(400).json({ error: "Email query param is required." });
@@ -225,7 +258,7 @@ router.get("/dev-reset-link", async (req, res) => {
     return res.status(404).json({ error: "No active reset token for this user." });
   }
 
-  const appUrl = (process.env.CLIENT_ORIGIN || "http://localhost:5173").split(",")[0].trim();
+  const appUrl = resetAppOrigin(req);
   const resetUrl = `${appUrl}/reset-password?token=${record.token}`;
   res.json({ token: record.token, resetUrl, email: user.email });
 });

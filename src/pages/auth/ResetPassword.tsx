@@ -58,6 +58,7 @@ export default function ResetPassword() {
     try {
       await api.post("/auth/reset-password", { token: activeToken, password });
       setDone(true);
+      setParams({}, { replace: true });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -87,7 +88,7 @@ export default function ResetPassword() {
               <Input
                 id="lookupEmail"
                 type="email"
-                placeholder="admin@vendorbridge.dev"
+                placeholder="you@company.com"
                 value={lookupEmail}
                 onChange={(e) => setLookupEmail(e.target.value)}
               />
