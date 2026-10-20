@@ -184,11 +184,27 @@ The audit trail also has a documented operational consequence: because rows cann
 deleted, `npm run db:cleanup-tests` removes test accounts, vendors and RFQs but leaves the
 audit entries those actions produced. That is intentional — the trail is evidence, not cache.
 
-## 8. Known limitations / not verified
+## 8. Independent Week 4 QA (2026-10-21)
 
-- **No Week 4 browser E2E suite.** Week 2 (76 checks) and Week 3 (106 checks) have their own
-  browser harnesses; Week 4 is covered by the 227-check API suite plus the captured screens
-  and a manual walkthrough of both pages. A `scripts/e2e-week4.mjs` was not written.
+The separate harness `scripts/e2e-week4.mjs` (80 HTTP, browser and database checks) was run against a
+disposable loopback PostgreSQL database after the 227-check API suite passed. It recorded **69
+passed, 0 failed and 11 `FAIL — NOT IMPLEMENTED`**: every unimplemented outcome belongs to
+**per-user notifications** (no model, endpoint, bell, unread count or mark-read action). Reports,
+CSV exports (including the formula-injection guard), audit immutability triggers, PDF, print,
+email delivery, role enforcement and mobile layout all passed. Evidence:
+[`docs/verification/week4-e2e-results.json`](verification/week4-e2e-results.json),
+[`WEEK4_E2E_REPORT.md`](verification/week4/WEEK4_E2E_REPORT.md), CSV exports under
+`docs/verification/week4/exports/` and screenshots under `docs/screenshots/week4/`.
+
+## 9. Known limitations / not verified
+
+- **Notifications are not implemented.** The activity/audit trail records the events, but there is
+  no notification model, API or bell. This is the one Week 4 deliverable that is missing, and the
+  QA harness records it as `FAIL — NOT IMPLEMENTED` rather than hiding it.
+- **No dedicated Week 4 lifecycle browser suite.** `scripts/e2e-week4.mjs` covers the Week 4
+  screens, CSV, PDF/print/email, roles and persistence through a real browser, but it does not
+  recreate the entire RFQ → approval → invoice lifecycle from scratch; that path is covered by the
+  227-check API suite and the Week 2/3 browser suites.
 - **Screenshots use development data**, including the backdated demo chains. They are
   fixtures for review, not operational documents.
 - **Reports have no scheduled delivery or Excel output** — on-demand JSON and three CSV

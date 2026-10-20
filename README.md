@@ -66,6 +66,7 @@ Other scripts:
 | `npm run test:api` | 227-check end-to-end API smoke test, Weeks 1–4 (see §7) |
 | `node scripts/e2e-week2.mjs` | 76-check Week 2 browser E2E suite (app running + disposable `*e2e*` database) |
 | `node scripts/e2e-week3.mjs` | 106-check Week 3 browser E2E suite (approval → PO → invoice, PDF, email) |
+| `node scripts/e2e-week4.mjs` | Week 4 QA harness: 80 HTTP/browser/database checks (notifications, audit, reports, CSV, PDF/email, roles) |
 | `npm run db:cleanup-tests` | Remove only `@vendorbridge.test` accounts/vendors created by the test suites |
 | `npm run screenshots` | Regenerate the screenshots in `docs/screenshots/` (needs the app running) |
 | `npm run typecheck` | TypeScript check |
@@ -522,6 +523,8 @@ name contains `e2e`, and it deletes only the RFQs/quotations it created. Full re
 [`docs/WEEK2_E2E_VERIFICATION.md`](docs/WEEK2_E2E_VERIFICATION.md) with machine-readable results in
 `docs/verification/week2/results.json`.
 
+`scripts/e2e-week4.mjs` is the independent **Week 4 QA harness**: it drives the real HTTP API and a browser against a disposable loopback database, recomputes every reported figure from PostgreSQL, downloads the PDF and CSV files, inspects the mail outbox, and proves audit immutability by attempting a raw `UPDATE`/`DELETE`. The latest run recorded **69 passed, 0 failed** and **11 `FAIL — NOT IMPLEMENTED`** — every one of those is the missing per-user notification subsystem (no model, endpoint, bell or unread count). Results: [`docs/verification/week4-e2e-results.json`](docs/verification/week4-e2e-results.json), report: [`docs/verification/week4/WEEK4_E2E_REPORT.md`](docs/verification/week4/WEEK4_E2E_REPORT.md). It refuses to run against any database that is not loopback with `e2e` in its name.
+
 `scripts/e2e-week3.mjs` is a **106-check browser suite** for the Week 3 flow: procurement requests
 approval in the UI, the manager approves, the PO is generated and opened, the invoice is generated,
 downloaded as a PDF (verified by its `%PDF-` header) and printed, email delivery is exercised
@@ -572,7 +575,9 @@ set `CHROME_PATH` if Brave/Chrome is installed elsewhere).
 
 E2E evidence (validation errors, empty states, expiry, revision, comparison) lives in
 [`docs/verification/week2/`](docs/verification/week2/) — 17 captures plus `results.json` — and the
-Week 3 run in [`docs/verification/week3/`](docs/verification/week3/).
+Week 3 run in [`docs/verification/week3/`](docs/verification/week3/). The Week 4 QA browser
+walkthrough (reports at 90 days and 12 months, export toast, activity drawer, print view, email
+feedback, role-denied screen and 375 px layout) is in [`docs/screenshots/week4/`](docs/screenshots/week4/).
 
 ### Demo data
 
@@ -619,6 +624,7 @@ and short motion that respects `prefers-reduced-motion`.
   draft RFQs contribute nothing to value. Multi-currency periods report the dominant currency in
   detail and disclose how many orders sit in other currencies instead of adding unlike amounts.
   There is no forecasting, scheduled report email or Excel (`.xlsx`) output — CSV only.
+- **Notifications**: the Week 4 build records every state change in the activity/audit trail but does not implement a per-user notification centre — there is no notification model, `/api/notifications` endpoint, bell, unread badge or mark-read action. The Week 4 QA harness records the related checks as `FAIL — NOT IMPLEMENTED` rather than omitting them.
 - **Audit trail scope**: the trail is append-only, which also means test actions cannot be removed;
   `npm run db:cleanup-tests` removes test accounts, vendors and RFQs but the audit rows remain by
   design. There is no retention policy, log shipping or separate export yet; staff read it in the
@@ -664,7 +670,9 @@ and short motion that respects `prefers-reduced-motion`.
 | Approval → purchase order → invoice workflow | ✅ implemented & verified end to end (106-check browser suite, [report](docs/WEEK3_COMPLETION_REPORT.md)) |
 | Week 3 completion report | ✅ [docs/WEEK3_COMPLETION_REPORT.md](docs/WEEK3_COMPLETION_REPORT.md) |
 | Reports, CSV exports and append-only audit trail | ✅ implemented & verified by 227 API checks ([report](docs/WEEK4_COMPLETION_REPORT.md)) |
+| Per-user notifications (bell, unread count, mark-read) | ❌ not implemented; recorded as 11 `FAIL — NOT IMPLEMENTED` outcomes in the [Week 4 QA run](docs/verification/week4-e2e-results.json) |
 | Week 4 completion report | ✅ [docs/WEEK4_COMPLETION_REPORT.md](docs/WEEK4_COMPLETION_REPORT.md) |
+| Week 4 QA evidence pack | ✅ [results JSON](docs/verification/week4-e2e-results.json), [CSV exports](docs/verification/week4/exports/), [screenshots](docs/screenshots/week4/) |
 | Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) — features, commands actually run, audit findings and limitations |
 | Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `feat/week4-reports-audit` |
 | PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema; 227 API checks pass against it |

@@ -1,0 +1,252 @@
+VendorBridge API smoke test against http://localhost:4000
+
+1. Authentication and session handling
+  ✓ health reports the API and database are ready
+  ✓ anonymous /vendors returns 401
+  ✓ anonymous /dashboard returns 401
+  ✓ anonymous /auth/me returns 401
+  ✓ auth capabilities are readable without a session
+  ✓ local reset-token helper is unavailable unless explicitly enabled
+  ✓ wrong password is rejected with 401
+  ✓ procurement officer can sign in
+  ✓ session cookie is HttpOnly
+  ✓ session JWT is not exposed in the JSON response
+  ✓ session payload hides password hashes
+  ✓ procurement role is returned
+  ✓ session survives a refresh via cookie
+  ✓ admin can sign in
+  ✓ authenticated dashboard responses are marked no-store
+  ✓ manager can sign in
+  ✓ vendor can sign in
+
+2. Backend authorization
+  ✓ vendor cannot create vendors (403)
+  ✓ vendor cannot read company-wide vendor metadata
+  ✓ manager cannot create vendors (403)
+  ✓ manager can read the vendor register
+  ✓ vendor only sees their own record
+  ✓ vendor record is scoped to Nova Office Supplies
+  ✓ vendor cannot read another vendor (403)
+
+3. Vendor validation and CRUD
+  ✓ invalid payload returns 422 with field errors
+  ✓ validation names the offending fields
+  ✓ procurement can create a vendor
+  ✓ new vendor receives a VND code
+  ✓ new vendor starts active
+  ✓ duplicate vendor name is rejected with 409
+  ✓ procurement can update a vendor
+  ✓ status change is saved
+  ✓ search returns the matching vendor
+  ✓ status filter returns only matching vendors
+  ✓ category filter returns only matching vendors
+  ✓ pagination returns page metadata
+  ✓ pagination returns at most one page of rows
+  ✓ unknown status filter is rejected with 400
+  ✓ vendor meta lists categories and statuses
+  ✓ vendor meta reports the total register size
+
+4. Dashboard
+  ✓ dashboard requires a session
+  ✓ internal dashboard scope is returned
+  ✓ dashboard reports active vendors
+  ✓ status counts reconcile with total suppliers
+  ✓ category counts reconcile with the register
+  ✓ recent vendors are limited to five
+  ✓ vendor dashboard scope is returned
+  ✓ vendor dashboard exposes their own profile
+  ✓ vendor dashboard metrics are limited to their own profile
+  ✓ vendor dashboard hides internal notes
+  ✓ vendor API hides internal notes
+
+5. Registration and password reset
+  ✓ weak password is rejected with 422
+  ✓ vendor registration succeeds with a session
+  ✓ vendor registration returns an HttpOnly session cookie
+  ✓ vendor registration creates a pending vendor profile
+  ✓ registered vendor is linked to the new account
+  ✓ public signup ignores client-supplied privileged roles
+  ✓ duplicate email registration is rejected with 409
+  ✓ forgot-password returns a generic acknowledgement
+  ✓ forgot-password keeps the reset token out of the response body
+  ✓ reset link is delivered to the email transport (dev outbox)
+  ✓ invalid reset token is rejected with 400
+  ✓ valid reset token updates the password
+  ✓ reset tokens are single use
+  ✓ admin can sign in with the new password
+  ✓ demo admin password restored
+  ✓ logout succeeds
+  ✓ session is cleared after logout
+
+6. Week 4 reports and audit trail
+  ✓ anonymous report access returns 401
+  ✓ anonymous activity access returns 401
+  ✓ vendor cannot read spend reports (403)
+  ✓ vendor cannot read the audit trail (403)
+  ✓ vendor cannot export reports (403)
+  ✓ procurement can read the report overview
+  ✓ report overview returns a currency, totals and monthly trend
+  ✓ report currency buckets reconcile with issued orders
+  ✓ monthly spend reconciles with the reported order value
+  ✓ category shares add up to 100 percent
+  ✓ manager can read the report overview
+  ✓ admin can read the report overview
+  ✓ supplier performance report is available
+  ✓ supplier performance exposes win rate and lead time
+  ✓ report rejects an inverted date range
+  ✓ report rejects a malformed date
+  ✓ report rejects a range longer than one year
+  ✓ report rejects an unknown export type
+  ✓ spend export returns a CSV file
+  ✓ export sets an attachment filename
+  ✓ CSV starts with the spend header row
+  ✓ CSV export marks the report no-store
+  ✓ purchase order export names the document columns
+  ✓ invoice export names the delivery columns
+  ✓ procurement can read the audit trail
+  ✓ the audit trail is recorded
+  ✓ audit entries name the actor, action and record
+  ✓ audit facets list the actions on record
+  ✓ audit responses are marked no-store
+  ✓ creating and updating a vendor is audited
+  ✓ the audit entry records who made the change
+  ✓ audit search matches the summary
+  ✓ audit pagination returns metadata
+  ✓ audit rejects invalid pagination
+  ✓ an audit entry can be opened with its record history
+  ✓ an unknown audit entry returns 404
+  ✓ audit entries cannot be updated at the database level
+  ✓ audit entries cannot be deleted at the database level
+  ✓ anonymous /approvals returns 401
+  ✓ week 3 responses for /approvals are no-store
+  ✓ anonymous /purchase-orders returns 401
+  ✓ week 3 responses for /purchase-orders are no-store
+  ✓ anonymous /invoices returns 401
+  ✓ week 3 responses for /invoices are no-store
+  ✓ procurement can read the approval queue (200)
+  ✓ manager can read the approval queue (200)
+  ✓ vendor cannot read the approval queue (403)
+  ✓ vendor can read only their purchase orders (200)
+  ✓ vendor can read only their invoices (200)
+  ✓ vendor cannot request approval (403)
+  ✓ anonymous /rfqs returns 401
+  ✓ procurement can read /rfqs
+
+7. Persistence
+  ✓ created vendor persists in a new session
+  ✓ procurement can delete a vendor
+  ✓ deleted vendor is gone
+  ✓ deleting a vendor is recorded in the audit trail
+  ✓ Week 2 fixtures: three independent vendor accounts with linked vendor records
+  ✓ registered vendor fixture is available for access-control tests
+
+8. RFQ creation, validation and lifecycle
+  ✓ anonymous cannot list RFQs
+  ✓ anonymous cannot create RFQs
+  ✓ vendor cannot create RFQs (403)
+  ✓ manager cannot create RFQs (403)
+  ✓ procurement can create a draft RFQ
+  ✓ RFQ receives a generated reference
+  ✓ new RFQ starts as a draft
+  ✓ RFQ stores both requested line items in order
+  ✓ RFQ stores vendor assignments
+  ✓ decimal quantities are serialised without trailing zeros
+  ✓ server ignores client-supplied status, reference and creator
+  ✓ short title is rejected with 422 (title)
+  ✓ no line items is rejected with 422 (items)
+  ✓ negative quantity is rejected with 422 (items.0.quantity)
+  ✓ zero quantity is rejected with 422 (items.0.quantity)
+  ✓ non-finite quantity is rejected with 422 (items.0.quantity)
+  ✓ unknown unit is rejected with 422 (items.0.unit)
+  ✓ unsupported currency is rejected with 422 (currency)
+  ✓ deadline in the past is rejected with 422 (deadline)
+  ✓ unknown vendor id is rejected with 422 (vendorIds)
+  ✓ duplicate vendor assignment is rejected with 422 (vendorIds)
+  ✓ manager can read an RFQ
+  ✓ assigned vendor cannot see a draft RFQ
+  ✓ draft RFQ can be published
+  ✓ publishing records a timestamp
+  ✓ publishing twice is rejected with 409
+  ✓ published RFQ can no longer be edited
+  ✓ vendors cannot be reassigned after publication
+  ✓ draft RFQ can be created without vendors
+  ✓ draft RFQ cannot be closed
+  ✓ publishing without assigned vendors is rejected with 422
+  ✓ vendor assignments can be replaced while in draft
+  ✓ draft with vendors and a future deadline publishes
+  ✓ open RFQ can be closed
+  ✓ closing twice is rejected with 409
+  ✓ a closed RFQ cannot be published
+  ✓ a closed RFQ cannot be cancelled
+  ✓ assigned vendor can still read a closed RFQ
+  ✓ open RFQ can be cancelled
+  ✓ cancelled RFQ reports the cancelled status to vendors
+  ✓ cancelled RFQ rejects submissions
+  ✓ concurrent creation allocates unique references
+
+9. Vendor access and quotation submission
+  ✓ assigned vendor can read a published RFQ
+  ✓ vendor response exposes only their own quotation
+  ✓ vendor response omits other vendors and their submissions
+  ✓ vendor cannot read an RFQ assigned to other vendors
+  ✓ unassigned vendor cannot submit a quotation
+  ✓ vendor cannot read procurement quotation lists
+  ✓ vendor cannot read the comparison
+  ✓ quotation with missing a requested item is rejected
+  ✓ quotation with pricing an unknown item is rejected
+  ✓ quotation with negative unit price is rejected
+  ✓ quotation with non-numeric unit price is rejected
+  ✓ quotation with missing delivery timeline is rejected
+  ✓ quotation with negative delivery timeline is rejected
+  ✓ quotation with tax above 100 percent is rejected
+  ✓ quotation with negative shipping is rejected
+  ✓ assigned vendor can submit a quotation
+  ✓ quotation is linked to the authenticated vendor
+  ✓ client-supplied currency is ignored
+  ✓ server calculates the line totals
+  ✓ server calculates tax and delivery inclusively
+  ✓ first submission is revision 1
+  ✓ resubmission appends a new revision instead of overwriting the bid
+  ✓ the superseded bid is kept for audit, never deleted
+  ✓ concurrent submissions from one vendor do not duplicate quotations
+  ✓ a second assigned vendor can quote the same RFQ
+  ✓ second quotation total is server-calculated
+  ✓ expiring RFQ publishes before its deadline
+  ✓ submissions after the UTC deadline are rejected
+  ✓ expired RFQ is reported as expired while still open
+
+10. Quotation review and comparison
+  ✓ procurement sees every quotation for the RFQ
+  ✓ quotation list includes vendor identity
+  ✓ quotation list exposes stored totals
+  ✓ quotation list can be sorted by total
+  ✓ unknown quotation sort is rejected with 400
+  ✓ comparison returns saved quotations
+  ✓ comparison highlights the lowest server-calculated total
+  ✓ exactly one quotation is marked lowest
+  ✓ comparison documents the cost basis and currency
+  ✓ currency-mismatched quotations are excluded from the highlight
+  ✓ the next-lowest comparable quotation wins instead
+  ✓ vendor responses never contain another vendor's prices or notes
+  ✓ equal totals pick a single winner deterministically
+  ✓ single-submission comparison still highlights the lowest valid quotation
+  ✓ comparison without submissions reports no valid result
+  ✓ quotations list without submissions is empty
+  ✓ quotation submit for a closed RFQ is rejected
+
+11. RFQ filtering, pagination, persistence and headers
+  ✓ search finds the RFQ by reference
+  ✓ unknown RFQ status filter is rejected
+  ✓ open filter only returns RFQs still accepting quotations
+  ✓ expired filter finds RFQs past their deadline
+  ✓ RFQ pagination returns metadata and at most one page of rows
+  ✓ RFQ sorting by reference is deterministic
+  ✓ RFQ responses are marked no-store
+  ✓ vendor RFQ list hides drafts
+  ✓ vendor RFQ list includes assigned RFQs
+  ✓ vendor RFQ list excludes unassigned RFQs
+  ✓ vendor RFQ list shows the vendor's own submission state
+  ✓ dashboard reports live RFQ metrics
+  ✓ RFQ and quotation survive a new session
+
+227 passed, 0 failed

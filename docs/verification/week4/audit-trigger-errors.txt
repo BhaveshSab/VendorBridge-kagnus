@@ -1,0 +1,13 @@
+UPDATE audit_logs
+
+Invalid `prisma.$executeRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `P0001`. Message: `ERROR: audit_logs is append-only: UPDATE is not permitted`
+
+DELETE audit_logs
+
+Invalid `prisma.$executeRawUnsafe()` invocation:
+
+
+Raw query failed. Code: `P0001`. Message: `ERROR: audit_logs is append-only: DELETE is not permitted`

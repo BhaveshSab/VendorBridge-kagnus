@@ -24,6 +24,7 @@
     "db:setup": "npm run db:generate && npm run db:deploy && npm run seed && npm run db:status",
     "db:studio": "prisma studio",
     "test:api": "node scripts/smoke-test.mjs",
+    "test:e2e:week4": "node scripts/e2e-week4.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "typecheck": "tsc -b --pretty false",
     "postinstall": "prisma generate"
