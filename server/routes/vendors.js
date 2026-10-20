@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { recordAudit } from "../audit.js";
 import { ApiError, currentVendorFor, parse, requireAuth, requireRole } from "../auth.js";
 import { cachedJson, invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
@@ -167,7 +168,7 @@ router.post("/", requireRole("admin", "procurement"), async (req, res) => {
 
   const vendor = await prisma.$transaction(async (tx) => {
     const seq = await nextSequence("VND", tx);
-    return tx.vendor.create({
+    const row = await tx.vendor.create({
       data: vendorData(data, {
         code: `VND-${String(seq).padStart(3, "0")}`,
         createdBy: req.user.id,
@@ -175,6 +176,18 @@ router.post("/", requireRole("admin", "procurement"), async (req, res) => {
         updatedAt: now(),
       }),
     });
+    await recordAudit(
+      req,
+      {
+        action: "vendor.created",
+        entityType: "vendor",
+        entityId: row.id,
+        summary: `Added ${row.name} (${row.code}) to the vendor register.`,
+        metadata: { code: row.code, name: row.name, category: row.category, status: row.status },
+      },
+      { client: tx },
+    );
+    return row;
   });
 
   await invalidateCache(VENDOR_META_NAMESPACE, "dashboard");
@@ -195,9 +208,36 @@ router.put("/:id", requireRole("admin", "procurement"), async (req, res) => {
       fields: { name: "Vendor name must be unique." },
     });
   }
-  const vendor = await prisma.vendor.update({
-    where: { id },
-    data: vendorData(data, { updatedAt: now() }),
+  const vendor = await prisma.$transaction(async (tx) => {
+    const row = await tx.vendor.update({
+      where: { id },
+      data: vendorData(data, { updatedAt: now() }),
+    });
+    const changes = Object.keys(vendorData(data)).filter((key) => {
+      const before = existing[key];
+      const after = row[key];
+      return JSON.stringify(before) !== JSON.stringify(after);
+    });
+    await recordAudit(
+      req,
+      {
+        action: "vendor.updated",
+        entityType: "vendor",
+        entityId: row.id,
+        summary:
+          existing.status !== row.status
+            ? `Changed ${row.name} (${row.code}) status from ${existing.status} to ${row.status}.`
+            : `Updated the record for ${row.name} (${row.code}).`,
+        metadata: {
+          code: row.code,
+          status: row.status,
+          previousStatus: existing.status,
+          fields: changes,
+        },
+      },
+      { client: tx },
+    );
+    return row;
   });
   await invalidateCache(VENDOR_META_NAMESPACE, "dashboard");
   res.json({ vendor: vendorOut(vendor) });
@@ -208,7 +248,20 @@ router.delete("/:id", requireRole("admin", "procurement"), async (req, res) => {
   const existing = await prisma.vendor.findUnique({ where: { id } });
   if (!existing) throw new ApiError(404, "Vendor not found.", { code: "not_found" });
   try {
-    await prisma.vendor.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.vendor.delete({ where: { id } });
+      await recordAudit(
+        req,
+        {
+          action: "vendor.deleted",
+          entityType: "vendor",
+          entityId: id,
+          summary: `Removed ${existing.name} (${existing.code}) from the vendor register.`,
+          metadata: { code: existing.code, name: existing.name, category: existing.category },
+        },
+        { client: tx },
+      );
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       throw new ApiError(404, "Vendor not found.", { code: "not_found" });

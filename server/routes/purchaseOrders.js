@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { recordAudit } from "../audit.js";
 import { ApiError, currentVendorFor, parse, requireAuth, requireRole } from "../auth.js";
 import { invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
@@ -252,6 +253,27 @@ router.post("/", requireRole(...GENERATE_ROLES), async (req, res) => {
           include: poInclude,
         });
 
+        await recordAudit(
+          req,
+          {
+            action: "purchase_order.generated",
+            entityType: "purchase_order",
+            entityId: purchaseOrder.id,
+            summary: `Generated ${purchaseOrder.number} from the approved quotation for ${approval.rfq.reference}.`,
+            metadata: {
+              number: purchaseOrder.number,
+              rfqId: approval.rfqId,
+              reference: approval.rfq.reference,
+              approvalId: approval.id,
+              quotationId: approval.quotationId,
+              vendorId: purchaseOrder.vendorId,
+              total: purchaseOrder.total.toFixed(2),
+              currency: purchaseOrder.currency,
+            },
+          },
+          { client: tx },
+        );
+
         return { purchaseOrder, created: true };
       },
       { maxWait: 10000, timeout: 20000 },
@@ -326,11 +348,23 @@ router.post("/:id/cancel", requireRole(...GENERATE_ROLES), async (req, res) => {
       });
     }
 
-    return tx.purchaseOrder.update({
+    const updated = await tx.purchaseOrder.update({
       where: { id },
       data: { status: "cancelled", cancelledAt: now(), cancelReason: reason, updatedAt: now() },
       include: poInclude,
     });
+    await recordAudit(
+      req,
+      {
+        action: "purchase_order.cancelled",
+        entityType: "purchase_order",
+        entityId: id,
+        summary: `Cancelled ${updated.number} — ${reason}`,
+        metadata: { number: updated.number, reason, total: updated.total.toFixed(2), currency: updated.currency },
+      },
+      { client: tx },
+    );
+    return updated;
   });
 
   await invalidateCache("dashboard");

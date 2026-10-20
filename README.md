@@ -1,14 +1,15 @@
 # VendorBridge — Procurement & Vendor Management ERP
 
-Weeks 1–3 deliverable for the Kagnus programme: **Foundation & Vendor Management**,
-**RFQs, Quotations & Comparison**, and **Approvals, Purchase Orders & Invoices**.
+Weeks 1–4 deliverable for the Kagnus programme: **Foundation & Vendor Management**,
+**RFQs, Quotations & Comparison**, **Approvals, Purchase Orders & Invoices**, and
+**Reports & Audit Trail**.
 VendorBridge is a full-stack application — a React single-page front end talking to an
 Express + PostgreSQL back end through Prisma ORM — implementing authentication, role-aware
 navigation, a procurement dashboard, complete vendor management, the end-to-end
-RFQ → quotation → comparison workflow, and the approval → purchase order → invoice workflow
-with server-rendered PDFs and transactional email. Modules scheduled for Week 4 (reports and
-the audit log) are intentionally not implemented; their dashboard areas show explicit
-"scheduled" states instead of fabricated numbers.
+RFQ → quotation → comparison workflow, the approval → purchase order → invoice workflow with
+server-rendered PDFs and transactional email, and a Week 4 reporting suite with spend analytics,
+CSV exports and an append-only activity trail. Every reported figure is derived from issued
+purchase orders, so a report can never disagree with the documents it summarises.
 
 ---
 
@@ -60,8 +61,11 @@ Other scripts:
 | `npm run db:setup` | Generate Prisma Client, apply migrations, seed an empty development DB and verify counts |
 | `npm run db:studio` | Open Prisma Studio against the configured database |
 | `npm run seed` | Add the demo fixture only when both users and vendors tables are empty; never overwrites existing data |
-| `npm run test:api` | 179-check end-to-end API smoke test, Week 1 + Week 2 (see §7) |
-| `node scripts/e2e-week2.mjs` | 74-check Week 2 browser E2E suite (app running + disposable `*e2e*` database) |
+| `npm run db:seed-demo` | Idempotent Week 1–3 demo: RFQs, quotations, approvals, purchase orders and invoices through the real API |
+| `npm run db:seed-week4` | Idempotent Week 4 demo: four document chains across four months, four supplier categories (app must be running) |
+| `npm run test:api` | 227-check end-to-end API smoke test, Weeks 1–4 (see §7) |
+| `node scripts/e2e-week2.mjs` | 76-check Week 2 browser E2E suite (app running + disposable `*e2e*` database) |
+| `node scripts/e2e-week3.mjs` | 106-check Week 3 browser E2E suite (approval → PO → invoice, PDF, email) |
 | `npm run db:cleanup-tests` | Remove only `@vendorbridge.test` accounts/vendors created by the test suites |
 | `npm run screenshots` | Regenerate the screenshots in `docs/screenshots/` (needs the app running) |
 | `npm run typecheck` | TypeScript check |
@@ -114,14 +118,13 @@ fixtures only; never use them in production.
 - Role-aware greeting, role label and the four summary cards from the design reference.
 - **Total suppliers**, status totals, recent vendors and category breakdown are fetched from
   `/api/dashboard` and computed from PostgreSQL. Vendors see only their own profile metrics.
-- **Active RFQs** is live (computed server-side into `rfqSummary`); **Pending approvals** and
-  **PO value** still show explicit `—` / *Scheduled release* placeholders because those modules
-  arrive in Weeks 3–4.
+- All four cards are live: **Active RFQs**, **Pending approvals**, **PO value** (grouped by
+  currency) and **Total suppliers**, each computed server-side from PostgreSQL.
 - Quick actions: add a vendor, open the vendor register, and create an RFQ (enabled in Week 2;
   staff get the create form, vendors get their invitation list).
 - Vendor register snapshot (five most recently updated vendors) with status chips.
 - Vendor status donut and vendor-by-category breakdown, both computed from stored records.
-- "Scheduled for upcoming milestones" card lists the Week 3/4 modules with their scope.
+- A "Now live in Week 4" card links to Reports and the Activity log for staff roles.
 - Skeleton loaders, empty states and an error state with retry; vendors see their own profile
   instead of the internal register.
 
@@ -207,13 +210,15 @@ fixtures only; never use them in production.
   false` instead of creating another.
 - **Invoices** are generated from an issued purchase order only (a cancelled PO returns `409`), copy
   the approved subtotal, tax, delivery charge and total without recomputing them, carry a unique
-  `INV-0001` number, an issue date and a 30-day (configurable) due date, and are linked to the
-  purchase order, RFQ and vendor. One invoice per purchase order is enforced by a unique index and
-  the same lock-then-return strategy.
+  `INV-0001` number, an issue date and a client-supplied due date (validated to at most one year
+  after issue; the UI defaults to 30 days), and are linked to the purchase order, RFQ and vendor.
+  One invoice per purchase order is enforced by a unique index and the same lock-then-return
+  strategy.
 - **PDF and print**: `GET /api/invoices/:id/pdf` renders the invoice server-side with pdf-lib
   (vendor, PO/RFQ references, line items, totals, payment terms) and streams it as
-  `application/pdf` with a `Content-Disposition` filename; purchase orders have the same download.
-  The print route renders the same document, so `window.print()` produces the identical layout.
+  `application/pdf` with a `Content-Disposition` filename. Invoices have a dedicated print route
+  that renders the same document without the app shell, so `window.print()` produces the identical
+  layout. Purchase orders are readable in the app but do not (yet) have their own PDF endpoint.
 - **Email delivery with real feedback**: `POST /api/invoices/:id/send` renders the PDF, sends it to
   the vendor address on file through Resend, and records `sent` / `failed` / `not_configured` with
   the provider, attempt count, timestamp and a redacted error message — each transition also
@@ -222,7 +227,42 @@ fixtures only; never use them in production.
   document is reported as `404`, never `403`, so ids cannot be probed) and can never generate or
   send documents. Every list is `Cache-Control: no-store`.
 
-### 4.7 Redis in production
+### 4.7 Reports & audit trail (Week 4 requirements)
+
+- **Spend analytics** (`GET /api/reports/overview`): period presets (30/90/180/365 days) over
+  issued purchase orders — awarded spend, order count, invoiced value, overdue invoices, approval
+  turnaround, request → PO cycle time, RFQ/quotation throughput, supplier counts, a monthly trend,
+  a category split and the top suppliers by awarded value.
+- **Currency correctness**: purchase orders can be priced in different currencies, so spend is
+  never summed across them. The report selects the dominant currency for the period, returns every
+  currency bucket, and the UI states how many orders were excluded from the breakdowns.
+- **Supplier performance** (`GET /api/reports/vendors`): invitations, quotations received, awards,
+  win rate and average quoted lead time per supplier for the selected period.
+- **CSV exports** (`GET /api/reports/export?type=spend|purchase-orders|invoices`): attachment
+  download with a `Content-Disposition` filename, UTF-8 BOM for Excel, CRLF rows, quoted fields and
+  a formula-injection guard for cells beginning with `=`, `+`, `-` or `@`.
+- **Staff-only**: vendors receive `403` on every report endpoint, including exports; the checks are
+  server-side, not just hidden navigation.
+- **Audit trail** (`GET /api/activity`): every state-changing action writes one row — sign-in
+  success/failure, password reset, vendor create/update/delete, RFQ create/update/assign/publish/
+  close/cancel, quotation submit/revise, approval request/decision, purchase order generate/cancel,
+  invoice generate and email delivery. Each row stores an actor snapshot, role, action, entity
+  type/id, a human summary, JSON metadata, IP address and user agent.
+- **Append-only at the database level**: `audit_logs` carries triggers that reject every UPDATE and
+  DELETE, so history cannot be rewritten through the API, Prisma or raw SQL. The actor snapshot
+  keeps entries readable after an account is removed, and `actor_id` is deliberately a historical
+  reference without a foreign key (an `ON DELETE SET NULL` would itself mutate an append-only row).
+- **Query and drill-down**: full-text search plus action, record type, actor and date-range filters,
+  facet counts, pagination, and a detail endpoint that returns the entry together with the same
+  record's other events.
+- **UI**: a Reports page (KPI cards, monthly bars, category donut, top suppliers, supplier
+  performance table, CSV buttons) and an Activity page (filters, colour-coded action chips, record
+  references and a metadata drawer), both limited to Admin, Procurement and Manager.
+- **Report semantics**: spend follows issued purchase orders (cancelled ones are excluded),
+  invoices are counted by issue date, and "overdue" means an issued invoice whose due date has
+  passed. Totals come from stored `DECIMAL` values; the browser only formats them.
+
+### 4.8 Redis in production
 
 - `server/redis.js` is the single connection used by the cache (`server/cache.js`) and the rate
   limiter (`server/rateLimit.js`). It accepts an Upstash **REST** URL plus token (recommended on
@@ -244,30 +284,35 @@ src/                 React SPA
   context/           Auth and toast providers
   lib/               API client, types, formatting, RFQ helpers, hooks
   pages/             auth/, Dashboard, Vendors, Profile, RfqList/Create/Detail/Quotation(s)/Comparison,
-                     Approvals, PurchaseOrders, PurchaseOrderDetail, Invoices, InvoiceDetail, InvoicePrint, NotFound
+                     Approvals, PurchaseOrders, PurchaseOrderDetail, Invoices, InvoiceDetail, InvoicePrint,
+                     Reports, Activity, NotFound
 prisma/
   schema.prisma      PostgreSQL models, relations and indexes
   migrations/        committed SQL migrations (init, rate limits, RFQ quotations, Week 3 documents,
-                     append-only quotation revisions)
+                     append-only quotation revisions, Week 4 audit log, cascade reconciliation)
 server/
   auth.js            password hashing, JWT, guards, validation error mapping
   db.js              shared Prisma Client, sequences and user mapping
+  audit.js           Week 4 action catalogue and append-only audit writer
   seed.js            demo users and vendors
   serializers.js     response shapes and role permissions
   money.js           server-side rounding and quotation money totals
   workflow.js        approval snapshots, document consistency checks, row locks, numbering
-  pdf.js             pdf-lib invoice and purchase-order documents
+  services/reports.js  spend/supplier read models, period validation and CSV export
+  pdf.js             pdf-lib invoice documents
   email.js           Resend delivery plus the development outbox
   cache.js           versioned read cache in front of expensive read models
   redis.js           single Upstash REST/TCP connection, fail-open with cooldown
   rateLimit.js       Redis-first, database-backed rate limiter
-  routes/            auth.js, vendors.js, rfqs.js, dashboard.js, approvals.js, purchaseOrders.js, invoices.js
+  routes/            auth.js, vendors.js, rfqs.js, dashboard.js, approvals.js, purchaseOrders.js,
+                     invoices.js, reports.js, activity.js
   index.js           Express app, security headers, SPA fallback
 scripts/
-  smoke-test.mjs     end-to-end API test suite (Weeks 1–3, 190 checks)
+  smoke-test.mjs     end-to-end API test suite (Weeks 1–4, 227 checks)
   e2e-week2.mjs      Week 2 browser E2E suite (76 checks)
   e2e-week3.mjs      Week 3 browser E2E suite (106 checks: approval → PO → invoice, PDF, email)
   seed-week12-demo.mjs  idempotent demo data: RFQs, quotations, approvals, PO, invoice
+  seed-week4-demo.mjs   four backdated procurement chains for the Week 4 reports and audit trail
   screenshots.mjs    screenshot capture for the submission pack
 ```
 
@@ -301,6 +346,10 @@ scripts/
 | `POST` | `/api/purchase-orders` | Admin, Procurement (approved request only; duplicate returns the existing PO) |
 | `POST` | `/api/purchase-orders/:id/cancel` | Admin, Procurement (no invoice yet) |
 | `GET` | `/api/invoices`, `/api/invoices/:id`, `/api/invoices/:id/pdf` | Staff: all; Vendor: own documents only |
+| `GET` | `/api/reports/overview` | Admin, Procurement, Manager (spend KPIs, trend, categories, top suppliers) |
+| `GET` | `/api/reports/vendors` | Admin, Procurement, Manager (supplier performance) |
+| `GET` | `/api/reports/export` | Admin, Procurement, Manager (`type=spend|purchase-orders|invoices`, CSV) |
+| `GET` | `/api/activity`, `/api/activity/:id` | Admin, Procurement, Manager (audit trail; vendors `403`) |
 | `POST` | `/api/invoices` | Admin, Procurement (issued PO only; duplicate returns the existing invoice) |
 | `POST` | `/api/invoices/:id/send` | Admin, Procurement (records sent/failed/not_configured) |
 | `GET` | `/api/vendors` | Signed in (vendors see only themselves) |
@@ -327,6 +376,8 @@ scripts/
 | Generate / cancel purchase orders | ✅ | ✅ | ❌ | ❌ |
 | Generate invoices, download PDFs, send email | ✅ | ✅ | ❌ | ❌ (own PDF read only) |
 | View purchase orders & invoices | all | all | all | own documents only |
+| View reports and export CSV | ✅ | ✅ | ✅ | ❌ |
+| Read the audit trail | ✅ | ✅ | ✅ | ❌ |
 
 ---
 
@@ -356,7 +407,8 @@ development-only fixtures and must never be loaded into production.
 | `PurchaseOrderItem` | `purchase_order_items` | Snapshot of the approved line items (description, quantity, unit, price, line total) |
 | `Invoice` | `invoices` | Unique `INV-####`, one per purchase order, issue/due dates, email delivery state |
 | `InvoiceItem` | `invoice_items` | Invoice line items copied from the purchase order |
-| `InvoiceEvent` | `invoice_events` | Timeline for generation and each email attempt
+| `InvoiceEvent` | `invoice_events` | Timeline for generation and each email attempt |
+| `AuditLog` | `audit_logs` | Append-only activity trail: actor snapshot, action, record, summary, metadata, IP, user agent |
 
 `Vendor` has two relations to `User`: the vendor's own account (`user_id`) and the staff member
 who created the record (`created_by`), both `ON DELETE SET NULL`.
@@ -375,7 +427,11 @@ Migrations live in `prisma/migrations/` and are part of the repository. The init
 order and invoice tables with their CHECK constraints, and
 `20261020150000_append_only_quotation_revisions` adds `superseded_at`, the partial unique index for
 live bids, a `BEFORE INSERT` trigger that rejects late quotations at the database clock, and
-delete guards that make vendor pricing physically append-only. `npm run seed` inserts the demo fixture
+delete guards that make vendor pricing physically append-only. Week 4 adds
+`20261021120000_add_audit_log` (the trail plus `UPDATE`/`DELETE` guard triggers), removes the audit
+actor foreign key so append-only rows cannot block account deletion, and reconciles the quotation
+foreign keys with the schema (`ON DELETE CASCADE`) so deleting an RFQ or vendor can still remove
+its bids. `npm run seed` inserts the demo fixture
 only into a development database with no users or vendors. It never overwrites existing records.
 A destructive reseed is blocked unless `ALLOW_DESTRUCTIVE_SEED=true` is explicitly set, and is
 never permitted when `NODE_ENV=production`.
@@ -413,7 +469,7 @@ npm run test:api     # in another
 
 The suite runs against the real PostgreSQL database configured in `DATABASE_URL`.
 
-`scripts/smoke-test.mjs` performs **190 assertions** against the running API when executed, covering:
+`scripts/smoke-test.mjs` performs **227 assertions** against the running API when executed, covering:
 
 1. Authentication — health readiness, 401s for anonymous access, wrong-password rejection,
    HttpOnly cookie session refresh, all four roles signing in, no JWT/password hashes in JSON responses,
@@ -430,15 +486,26 @@ The suite runs against the real PostgreSQL database configured in `DATABASE_URL`
    role even when a privileged role is submitted, vendor sign-up creating a Pending profile,
    duplicate email conflict, reset token issuance, single-use tokens, password change and sign-in
    with the new password.
-6. Module scope guard — Weeks 3–4 endpoints (`/approvals`, `/purchase-orders`, `/invoices`,
-   `/reports`, `/activity`) are not exposed; `/api/rfqs` is live and covered by the checks below.
-7. Persistence — created vendors survive into a new session, and deletion is permanent.Note: the smoke test registers throwaway accounts under the reserved `@vendorbridge.test` domain.
+6. Week 4 reports — anonymous access is refused (401), vendors are refused (403) on reports,
+   exports and the audit trail, staff can read the overview/performance/CSV endpoints, currency
+   buckets and monthly spend reconcile with the reported totals, category shares sum to 100%,
+   inverted/malformed/over-long ranges and unknown export types are rejected (422), CSV responses
+   carry the right content type, attachment filename, BOM-free-to-fetch header row and `no-store`.
+7. Week 4 audit trail — staff can read the filtered, paginated feed and its facets, an entry can
+   be opened with its related record history, creating/updating/deleting a vendor is recorded with
+   the actor's name, and a direct `UPDATE` or `DELETE` on `audit_logs` is refused by the database
+   triggers (verified inside the suite).
+8. Persistence — created vendors survive into a new session, and deletion is permanent.
+
+Note: the smoke test registers throwaway accounts under the reserved `@vendorbridge.test` domain.
 Run `npm run db:cleanup-tests` afterwards to delete only those records; seeded demo data and real
 vendor records are never touched. Only if the configured database is disposable development data,
 explicitly set `ALLOW_DESTRUCTIVE_SEED=true` before using `npm run seed -- --force` to reset it.
 That command truncates application tables and should not be used on shared data.
 
-Week 2 coverage inside the same suite: RFQ creation and Zod validation (422 field errors),
+Week 4 coverage also includes the role boundaries (vendor report/audit `403`s), the append-only
+guarantee, the audit actor snapshot and the report/CSV shape. Week 2 coverage inside the same suite:
+RFQ creation and Zod validation (422 field errors),
 client-supplied `status`/`reference`/`createdBy` ignored, lifecycle `409`s (duplicate publish,
 edit/assign after publish, double close), publish rules (≥1 line, ≥1 vendor, future deadline),
 unique references under concurrent creation, vendor scoping (unassigned `404`, unassigned submit
@@ -498,6 +565,11 @@ set `CHROME_PATH` if Brave/Chrome is installed elsewhere).
 | [Approval decision](docs/screenshots/28-week3-approval-detail.png) | [Invoice](docs/screenshots/30-week3-invoice.png) |
 | [Vendor invoices](docs/screenshots/32-week3-vendor-invoices.png) | [Invoice print view](docs/screenshots/31-week3-invoice-print.png) |
 
+| Reports & audit trail (Week 4) | |
+| --- | --- |
+| [Spend reports](docs/screenshots/33-week4-reports.png) | [Full 12-month report](docs/screenshots/34-week4-reports-trend.png) |
+| [Activity trail](docs/screenshots/35-week4-activity.png) | [Audit entry detail](docs/screenshots/36-week4-audit-detail.png) |
+
 E2E evidence (validation errors, empty states, expiry, revision, comparison) lives in
 [`docs/verification/week2/`](docs/verification/week2/) — 17 captures plus `results.json` — and the
 Week 3 run in [`docs/verification/week3/`](docs/verification/week3/).
@@ -543,18 +615,25 @@ and short motion that respects `prefers-reduced-motion`.
 - **Role provisioning**: public registration is limited to Vendor accounts. Procurement and Manager
   accounts must be provisioned outside public sign-up; there is no admin invitation UI or email
   verification workflow in Week 1.
-- **Weeks 3–4 are not implemented**: approvals, purchase orders, invoices, reports and the audit
-  log are deliberately out of scope (those routes return `404`). Their dashboard areas show
-  explicit empty states instead of fabricated data. RFQ attachments (drag-and-drop uploads) and
-  per-line tax/shipping from the wireframe are also out of scope — tax, shipping and delivery are
-  quotation-level, with per-line prices.
+- **Reports scope**: spend follows **issued** purchase orders, so cancelled orders are excluded and
+  draft RFQs contribute nothing to value. Multi-currency periods report the dominant currency in
+  detail and disclose how many orders sit in other currencies instead of adding unlike amounts.
+  There is no forecasting, scheduled report email or Excel (`.xlsx`) output — CSV only.
+- **Audit trail scope**: the trail is append-only, which also means test actions cannot be removed;
+  `npm run db:cleanup-tests` removes test accounts, vendors and RFQs but the audit rows remain by
+  design. There is no retention policy, log shipping or separate export yet; staff read it in the
+  app with filters. IP addresses come from `X-Forwarded-For` and are only as trustworthy as the
+  proxy in front of the API.
+- **RFQ attachments** (drag-and-drop uploads) and per-line tax/shipping from the wireframe remain
+  out of scope — tax, shipping and delivery are quotation-level, with per-line prices.
 - **Database hosting**: the API needs a reachable PostgreSQL instance; there is no embedded or
   offline fallback. The current database is a managed Neon instance whose connection string lives
   in `.env`, so it must be provisioned before the app can start.
-- **Automated UI tests**: the 74-check Week 2 browser suite (`scripts/e2e-week2.mjs`, Chromium at
-  1440×900) covers the RFQ workflow end to end; Week 1 flows still rely on the 179-check API suite
-  plus a manual walkthrough. The E2E harness only accepts a loopback database whose name contains
-  `e2e` — run it against staging by mistake and it will refuse rather than write there.
+- **Automated UI tests**: the 76-check Week 2 and 106-check Week 3 browser suites
+  (`scripts/e2e-week2.mjs`, `scripts/e2e-week3.mjs`, Chromium at 1440×900) cover those workflows
+  end to end; Week 1/4 flows are covered by the 227-check API suite plus the captured screens and a
+  manual walkthrough. Both harnesses only accept a loopback database whose name contains `e2e` —
+  run them against staging by mistake and they refuse rather than write there.
 - **Deployment**: Vercel hosts the Vite build plus `api/index.js` (Express as one serverless
   function, `maxDuration` 30s) and Neon hosts PostgreSQL; migrations run during the build via
   `npm run db:deploy`. The serverless function is stateless, so rate limits use Redis when
@@ -579,12 +658,16 @@ and short motion that respects `prefers-reduced-motion`.
 | Vendor data persisted in the database | ✅ PostgreSQL via Prisma |
 | Vendor management restricted to authorized roles | ✅ |
 | README with setup, configuration, run instructions | ✅ this file |
-| Screenshots of authentication, dashboard and vendor management | ✅ 17 screens in `docs/screenshots/` (9 Week 1 + 8 Week 2) |
-| RFQ → quotation → comparison workflow | ✅ implemented & verified end to end (74-check browser suite, [report](docs/WEEK2_E2E_VERIFICATION.md)) |
+| Screenshots of authentication, dashboard and vendor management | ✅ 37 screens in `docs/screenshots/` covering Weeks 1–4 |
+| RFQ → quotation → comparison workflow | ✅ implemented & verified end to end (76-check browser suite, [report](docs/WEEK2_E2E_VERIFICATION.md)) |
 | Week 2 completion report | ✅ [docs/WEEK2_COMPLETION_REPORT.md](docs/WEEK2_COMPLETION_REPORT.md) |
+| Approval → purchase order → invoice workflow | ✅ implemented & verified end to end (106-check browser suite, [report](docs/WEEK3_COMPLETION_REPORT.md)) |
+| Week 3 completion report | ✅ [docs/WEEK3_COMPLETION_REPORT.md](docs/WEEK3_COMPLETION_REPORT.md) |
+| Reports, CSV exports and append-only audit trail | ✅ implemented & verified by 227 API checks ([report](docs/WEEK4_COMPLETION_REPORT.md)) |
+| Week 4 completion report | ✅ [docs/WEEK4_COMPLETION_REPORT.md](docs/WEEK4_COMPLETION_REPORT.md) |
 | Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) — features, commands actually run, audit findings and limitations |
-| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `feat/week2-rfq-quotations` |
-| PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema; 179 API checks pass against it |
+| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `feat/week4-reports-audit` |
+| PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema; 227 API checks pass against it |
 
 ### Getting the code
 
@@ -596,6 +679,8 @@ npm install                 # installs dependencies and generates the Prisma Cli
 cp .env.example .env        # set DATABASE_URL (PostgreSQL) and JWT_SECRET
 
 npm run db:setup            # generate client, migrate, seed empty dev DB, and show row counts
+npm run db:seed-demo        # optional: Week 1–3 demo RFQs, approvals, PO and invoice
+npm run db:seed-week4       # optional: four backdated chains for the reports and audit trail
 npm run dev                 # API on :4000, Vite on :5173
 ```
 

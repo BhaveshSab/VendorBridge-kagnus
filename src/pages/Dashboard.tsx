@@ -2,6 +2,7 @@ import { motion, type Variants } from "framer-motion";
 import {
   ArrowRight,
   BadgeCheck,
+  BarChart3,
   Building2,
   CalendarDays,
   ClipboardList,
@@ -60,13 +61,22 @@ const metricCardVariants: Variants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
 };
 
-const UPCOMING = [
+const WEEK_FOUR = [
   {
-    badge: "Roadmap",
-    title: "Reports & audit trail",
-    description: "Spend analytics, exportable reports and a full activity history.",
+    badge: "Live",
+    title: "Reports",
+    description: "Spend by month, category and supplier, with CSV exports.",
+    icon: BarChart3,
+    badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    to: "/reports",
+  },
+  {
+    badge: "Live",
+    title: "Activity & audit trail",
+    description: "Every approval, document and sign-in recorded immutably.",
     icon: ShieldCheck,
-    badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
+    badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    to: "/activity",
   },
 ];
 
@@ -77,33 +87,36 @@ function greeting() {
   return "Good evening";
 }
 
-function UpcomingModules() {
+function WeekFourModules() {
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-line/80 bg-slate-50/50 px-5 py-3.5">
         <h2 className="text-[13px] font-bold text-ink flex items-center gap-2">
-          <Sparkles size={15} className="text-amber-500" />
-          Scheduled for upcoming milestones
+          <Sparkles size={15} className="text-emerald-600" />
+          Now live in Week 4
         </h2>
-        <p className="text-[11px] text-muted">Planned enterprise capabilities on the product roadmap</p>
+        <p className="text-[11px] text-muted">Spend analytics, exports and the append-only activity trail</p>
       </div>
       <ul className="divide-y divide-line/60">
-        {UPCOMING.map((module) => {
+        {WEEK_FOUR.map((module) => {
           const Icon = module.icon;
           return (
-            <li key={module.title} className="flex items-start gap-3.5 px-5 py-3.5 hover:bg-slate-50/40 transition-colors">
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 border border-slate-200/60 shadow-xs">
-                <Icon size={16} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[13px] font-bold text-ink">{module.title}</p>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${module.badgeColor}`}>
-                    {module.badge}
-                  </span>
+            <li key={module.title}>
+              <Link to={module.to} className="group flex items-start gap-3.5 px-5 py-3.5 hover:bg-slate-50/40 transition-colors">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-xs">
+                  <Icon size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[13px] font-bold text-ink group-hover:text-brand-600 transition-colors">{module.title}</p>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${module.badgeColor}`}>
+                      {module.badge}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-muted">{module.description}</p>
                 </div>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-muted">{module.description}</p>
-              </div>
+                <ArrowRight size={14} className="mt-2 text-slate-300 group-hover:text-brand-600 group-hover:translate-x-0.5 transition-all" />
+              </Link>
             </li>
           );
         })}
@@ -498,7 +511,7 @@ export default function Dashboard() {
               </Card>
             )}
 
-            <UpcomingModules />
+            {!isVendor ? <WeekFourModules /> : null}
           </div>
 
           <div className="min-w-0 space-y-5">
@@ -534,8 +547,8 @@ export default function Dashboard() {
             <Card className="p-5 border-blue-100 bg-gradient-to-br from-white to-blue-50/30">
               <p className="text-[13px] font-bold text-ink">Procurement workspace</p>
               <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-                Vendor management, RFQs, quotation comparison and the approval → purchase order → invoice workflow are
-                live. Reports and the audit trail remain on the roadmap.
+                Vendor management, RFQs, quotation comparison, the approval → purchase order → invoice workflow and
+                Week 4 reports with an append-only audit trail are all live.
               </p>
               <div className="mt-3.5 flex flex-col gap-2">
                 <Link to="/vendors" className="btn btn-ghost btn-sm w-full justify-center">

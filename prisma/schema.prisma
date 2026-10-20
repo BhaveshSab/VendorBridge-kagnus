@@ -31,6 +31,10 @@ model User {
   invoices           Invoice[]         @relation("InvoiceCreator")
   invoiceEvents      InvoiceEvent[]    @relation("InvoiceEventActor")
 
+  // Week 4 — audit rows do not hold a foreign key back to User on purpose:
+  // the entry copies the actor's name/email/role, and an append-only table must
+  // not be updated (ON DELETE SET NULL) when an account is removed.
+
   @@map("users")
 }
 
@@ -367,4 +371,38 @@ model RateLimit {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("rate_limits")
+}
+
+// ---------------------------------------------------------------------------
+// Week 4 — reports and the audit trail.
+//
+// Every state-changing action writes one row here: who did it, from where,
+// which record it touched and a human-readable summary. The row keeps a
+// snapshot of the actor's name/email/role so the history survives account
+// deletion, and the migration adds triggers that reject UPDATE and DELETE —
+// the trail is append-only at the database level, not just by convention.
+// `actor_id` is a historical reference without a foreign key: an FK's
+// ON DELETE SET NULL would itself be an UPDATE of an append-only row.
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  actorId    Int?     @map("actor_id")
+  actorName  String   @map("actor_name")
+  actorEmail String?  @map("actor_email")
+  actorRole  String   @map("actor_role")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  summary    String
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
 }

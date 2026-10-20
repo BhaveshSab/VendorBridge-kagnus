@@ -16,6 +16,7 @@ import {
   signToken,
   verifyPassword,
 } from "../auth.js";
+import { recordAudit } from "../audit.js";
 import { displayName, nextSequence, now, prisma, publicUser } from "../db.js";
 import { sendPasswordResetEmail } from "../email.js";
 import { createAuthLimiter } from "../rateLimit.js";
@@ -171,8 +172,44 @@ router.post("/login", loginLimiter, async (req, res) => {
   const data = parse(loginSchema, req.body);
   const user = await prisma.user.findUnique({ where: { email: data.email } });
   if (!user || !(await verifyPassword(data.password, user.passwordHash))) {
+    // Failed attempts are part of the audit trail. Recording must never change
+    // the response, so this write is best-effort and the message stays generic.
+    await recordAudit(
+      req,
+      {
+        action: "auth.login_failed",
+        entityType: "session",
+        summary: `Failed sign-in attempt for ${data.email}.`,
+        metadata: { email: data.email },
+      },
+      {
+        strict: false,
+        actor: { actorId: null, actorName: "Unknown", actorEmail: data.email, actorRole: "anonymous" },
+      },
+    );
     throw new ApiError(401, "Incorrect email or password.", { code: "invalid_credentials" });
   }
+  await recordAudit(
+    req,
+    {
+      action: "auth.login",
+      entityType: "user",
+      entityId: user.id,
+      summary: `${displayName(user)} signed in as ${roleLabel(user.role)}.`,
+      metadata: { role: user.role, email: user.email },
+    },
+    {
+      strict: false,
+      // The request has no authenticated user yet: authenticateOptional ran
+      // before this handler and there was no session cookie.
+      actor: {
+        actorId: user.id,
+        actorName: displayName(user),
+        actorEmail: user.email,
+        actorRole: user.role,
+      },
+    },
+  );
   const token = signToken(user);
   setSessionCookie(res, token);
   res.json({ expiresIn: COOKIE_MAX_AGE, ...(await sessionPayload(user)) });
@@ -304,11 +341,36 @@ router.post("/reset-password", async (req, res) => {
       code: "invalid_reset_token",
     });
   }
+  const user = await prisma.user.findUnique({ where: { id: record.userId } });
+  if (!user) {
+    throw new ApiError(400, "This reset link is invalid or has expired. Request a new one.", {
+      code: "invalid_reset_token",
+    });
+  }
   const passwordHash = await hashPassword(password);
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
-    prisma.passwordReset.update({ where: { token }, data: { used: 1 } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: record.userId }, data: { passwordHash } });
+    await tx.passwordReset.update({ where: { token }, data: { used: 1 } });
+    await recordAudit(
+      req,
+      {
+        action: "auth.password_reset",
+        entityType: "user",
+        entityId: user.id,
+        summary: `${displayName(user)} reset their password.`,
+        metadata: { email: user.email },
+      },
+      {
+        client: tx,
+        actor: {
+          actorId: user.id,
+          actorName: displayName(user),
+          actorEmail: user.email,
+          actorRole: user.role,
+        },
+      },
+    );
+  });
   res.json({ message: "Password updated. You can sign in with your new password." });
 });
 

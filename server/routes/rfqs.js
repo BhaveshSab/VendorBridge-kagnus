@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { recordAudit } from "../audit.js";
 import { ApiError, currentVendorFor, parse, requireAuth, requireRole } from "../auth.js";
 import { invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
@@ -569,7 +570,7 @@ router.post("/", requireRole(...WRITE_ROLES), async (req, res) => {
           await assertVendorsExist(tx, vendorIds);
           const seq = await nextSequence("RFQ", tx);
           const timestamp = now();
-          return tx.rfq.create({
+          const row = await tx.rfq.create({
             data: {
               reference: `RFQ-${String(seq).padStart(4, "0")}`,
               title: data.title,
@@ -598,6 +599,25 @@ router.post("/", requireRole(...WRITE_ROLES), async (req, res) => {
             },
             include: detailInclude,
           });
+          await recordAudit(
+            req,
+            {
+              action: "rfq.created",
+              entityType: "rfq",
+              entityId: row.id,
+              summary: `Created ${row.reference} — ${row.title}.`,
+              metadata: {
+                reference: row.reference,
+                title: row.title,
+                currency: row.currency,
+                status: row.status,
+                items: row.items.length,
+                vendors: row.assignments.length,
+              },
+            },
+            { client: tx },
+          );
+          return row;
         },
         { maxWait: 10000, timeout: 20000 },
       );
@@ -650,7 +670,19 @@ router.put("/:id", requireRole(...WRITE_ROLES), async (req, res) => {
         },
       });
 
-      return tx.rfq.findUnique({ where: { id }, include: detailInclude });
+      const row = await tx.rfq.findUnique({ where: { id }, include: detailInclude });
+      await recordAudit(
+        req,
+        {
+          action: "rfq.updated",
+          entityType: "rfq",
+          entityId: id,
+          summary: `Updated ${row.reference} — ${row.title}.`,
+          metadata: { reference: row.reference, items: row.items.length, currency: row.currency },
+        },
+        { client: tx },
+      );
+      return row;
     },
     { maxWait: 10000, timeout: 20000 },
   );
@@ -682,7 +714,19 @@ router.put("/:id/vendors", requireRole(...WRITE_ROLES), async (req, res) => {
         });
       }
       await tx.rfq.update({ where: { id }, data: { updatedAt: timestamp } });
-      return tx.rfq.findUnique({ where: { id }, include: detailInclude });
+      const row = await tx.rfq.findUnique({ where: { id }, include: detailInclude });
+      await recordAudit(
+        req,
+        {
+          action: "rfq.vendors_updated",
+          entityType: "rfq",
+          entityId: id,
+          summary: `Set ${vendorIds.length} invited supplier(s) on ${row.reference} — ${row.title}.`,
+          metadata: { reference: row.reference, vendorIds },
+        },
+        { client: tx },
+      );
+      return row;
     },
     { maxWait: 10000, timeout: 20000 },
   );
@@ -723,24 +767,42 @@ router.post("/:id/publish", requireRole(...WRITE_ROLES), async (req, res) => {
   }
   assertFutureDeadline(rfq.deadline);
 
-  const result = await prisma.rfq.updateMany({
-    where: { id, status: "draft" },
-    data: { status: "open", publishedAt: now(), updatedAt: now() },
-  });
-  if (result.count !== 1) {
-    throw new ApiError(409, "This RFQ was changed by another request. Reload and try again.", {
-      code: "invalid_transition",
-    });
-  }
-
-  const updated = await prisma.rfq.findUnique({ where: { id }, include: detailInclude });
+  const updated = await prisma.$transaction(
+    async (tx) => {
+      const result = await tx.rfq.updateMany({
+        where: { id, status: "draft" },
+        data: { status: "open", publishedAt: now(), updatedAt: now() },
+      });
+      if (result.count !== 1) {
+        throw new ApiError(409, "This RFQ was changed by another request. Reload and try again.", {
+          code: "invalid_transition",
+        });
+      }
+      await recordAudit(
+        req,
+        {
+          action: "rfq.published",
+          entityType: "rfq",
+          entityId: id,
+          summary: `Published ${rfq.reference} — ${rfq.title} to ${rfq.assignments.length} supplier(s).`,
+          metadata: { reference: rfq.reference, vendors: rfq.assignments.length },
+        },
+        { client: tx },
+      );
+      return tx.rfq.findUnique({ where: { id }, include: detailInclude });
+    },
+    { maxWait: 10000, timeout: 20000 },
+  );
   await invalidateCache("dashboard");
   res.json({ rfq: rfqDetailOut(updated, { submissions: buildSubmissions(updated, []) }) });
 });
 
 router.post("/:id/close", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = rfqId(req.params.id);
-  const rfq = await prisma.rfq.findUnique({ where: { id }, select: { id: true, status: true } });
+  const rfq = await prisma.rfq.findUnique({
+    where: { id },
+    select: { id: true, status: true, reference: true, title: true },
+  });
   if (!rfq) throw new ApiError(404, "RFQ not found.", { code: "not_found" });
   if (rfq.status !== "open") {
     throw new ApiError(409, "Only open RFQs can be closed.", {
@@ -749,17 +811,32 @@ router.post("/:id/close", requireRole(...WRITE_ROLES), async (req, res) => {
     });
   }
 
-  const result = await prisma.rfq.updateMany({
-    where: { id, status: "open" },
-    data: { status: "closed", closedAt: now(), updatedAt: now() },
-  });
-  if (result.count !== 1) {
-    throw new ApiError(409, "This RFQ was changed by another request. Reload and try again.", {
-      code: "invalid_transition",
-    });
-  }
-
-  const updated = await prisma.rfq.findUnique({ where: { id }, include: detailInclude });
+  const updated = await prisma.$transaction(
+    async (tx) => {
+      const result = await tx.rfq.updateMany({
+        where: { id, status: "open" },
+        data: { status: "closed", closedAt: now(), updatedAt: now() },
+      });
+      if (result.count !== 1) {
+        throw new ApiError(409, "This RFQ was changed by another request. Reload and try again.", {
+          code: "invalid_transition",
+        });
+      }
+      await recordAudit(
+        req,
+        {
+          action: "rfq.closed",
+          entityType: "rfq",
+          entityId: id,
+          summary: `Closed ${rfq.reference} — ${rfq.title} to new quotations.`,
+          metadata: { reference: rfq.reference },
+        },
+        { client: tx },
+      );
+      return tx.rfq.findUnique({ where: { id }, include: detailInclude });
+    },
+    { maxWait: 10000, timeout: 20000 },
+  );
   const quotations = await prisma.quotation.findMany({
     where: { rfqId: id, ...ACTIVE_QUOTATION },
     select: { id: true, vendorId: true, total: true, submittedAt: true, revision: true },
@@ -770,7 +847,10 @@ router.post("/:id/close", requireRole(...WRITE_ROLES), async (req, res) => {
 
 router.post("/:id/cancel", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = rfqId(req.params.id);
-  const rfq = await prisma.rfq.findUnique({ where: { id }, select: { id: true, status: true } });
+  const rfq = await prisma.rfq.findUnique({
+    where: { id },
+    select: { id: true, status: true, reference: true, title: true },
+  });
   if (!rfq) throw new ApiError(404, "RFQ not found.", { code: "not_found" });
   if (rfq.status !== "draft" && rfq.status !== "open") {
     throw new ApiError(409, "This RFQ can no longer be cancelled.", {
@@ -779,17 +859,32 @@ router.post("/:id/cancel", requireRole(...WRITE_ROLES), async (req, res) => {
     });
   }
 
-  const result = await prisma.rfq.updateMany({
-    where: { id, status: { in: ["draft", "open"] } },
-    data: { status: "cancelled", cancelledAt: now(), updatedAt: now() },
-  });
-  if (result.count !== 1) {
-    throw new ApiError(409, "This RFQ was changed by another request. Reload and try again.", {
-      code: "invalid_transition",
-    });
-  }
-
-  const updated = await prisma.rfq.findUnique({ where: { id }, include: detailInclude });
+  const updated = await prisma.$transaction(
+    async (tx) => {
+      const result = await tx.rfq.updateMany({
+        where: { id, status: { in: ["draft", "open"] } },
+        data: { status: "cancelled", cancelledAt: now(), updatedAt: now() },
+      });
+      if (result.count !== 1) {
+        throw new ApiError(409, "This RFQ was changed by another request. Reload and try again.", {
+          code: "invalid_transition",
+        });
+      }
+      await recordAudit(
+        req,
+        {
+          action: "rfq.cancelled",
+          entityType: "rfq",
+          entityId: id,
+          summary: `Cancelled ${rfq.reference} — ${rfq.title}.`,
+          metadata: { reference: rfq.reference, previousStatus: rfq.status },
+        },
+        { client: tx },
+      );
+      return tx.rfq.findUnique({ where: { id }, include: detailInclude });
+    },
+    { maxWait: 10000, timeout: 20000 },
+  );
   await invalidateCache("dashboard");
   res.json({ rfq: rfqDetailOut(updated, { submissions: [] }) });
 });
@@ -1021,34 +1116,66 @@ router.put("/:id/quotation", requireRole("vendor"), async (req, res) => {
               where: { id: existing.id },
               data: { supersededAt: timestamp, updatedAt: timestamp },
             });
-            return {
-              created: false,
-              quotation: await tx.quotation.create({
-                data: {
-                  ...terms,
-                  revision: existing.revision + 1,
-                  submittedAt: timestamp,
-                  updatedAt: timestamp,
-                  items: { create: lines },
-                },
-                include: quotationInclude,
-              }),
-            };
-          }
-
-          return {
-            created: true,
-            quotation: await tx.quotation.create({
+            const quotation = await tx.quotation.create({
               data: {
                 ...terms,
-                revision: 1,
+                revision: existing.revision + 1,
                 submittedAt: timestamp,
                 updatedAt: timestamp,
                 items: { create: lines },
               },
               include: quotationInclude,
-            }),
-          };
+            });
+            await recordAudit(
+              req,
+              {
+                action: "quotation.revised",
+                entityType: "quotation",
+                entityId: quotation.id,
+                summary: `${vendor.name} revised their bid for ${rfq.reference} to revision ${quotation.revision}.`,
+                metadata: {
+                  rfqId: id,
+                  reference: rfq.reference,
+                  vendorId: vendor.id,
+                  revision: quotation.revision,
+                  total: quotation.total.toFixed(2),
+                  currency: quotation.currency,
+                },
+              },
+              { client: tx },
+            );
+            return { created: false, quotation };
+          }
+
+          const quotation = await tx.quotation.create({
+            data: {
+              ...terms,
+              revision: 1,
+              submittedAt: timestamp,
+              updatedAt: timestamp,
+              items: { create: lines },
+            },
+            include: quotationInclude,
+          });
+          await recordAudit(
+            req,
+            {
+              action: "quotation.submitted",
+              entityType: "quotation",
+              entityId: quotation.id,
+              summary: `${vendor.name} submitted a quotation for ${rfq.reference} (${quotation.total.toFixed(2)} ${quotation.currency}).`,
+              metadata: {
+                rfqId: id,
+                reference: rfq.reference,
+                vendorId: vendor.id,
+                revision: quotation.revision,
+                total: quotation.total.toFixed(2),
+                currency: quotation.currency,
+              },
+            },
+            { client: tx },
+          );
+          return { created: true, quotation };
         },
         { maxWait: 10000, timeout: 20000 },
       )
