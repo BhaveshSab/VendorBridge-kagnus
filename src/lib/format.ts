@@ -34,6 +34,22 @@ export function formatDateTime(value: string | null | undefined) {
   return formatDate(value, { withTime: true });
 }
 
+/** Compact currency for chart labels, e.g. ₹4.9L or $1.2M. */
+export function formatCompactMoney(value: string | number | null | undefined, currency = "INR") {
+  const amount = Number(value);
+  if (value == null || value === "" || !Number.isFinite(amount)) return "—";
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(amount);
+  } catch {
+    return formatMoney(value, currency);
+  }
+}
+
 /** Convert an ISO timestamp into the value format required by datetime-local. */
 export function toDateTimeLocal(value: string | null | undefined) {
   if (!value) return "";

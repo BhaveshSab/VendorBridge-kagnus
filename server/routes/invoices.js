@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { recordAudit } from "../audit.js";
 import { ApiError, currentVendorFor, parse, requireAuth, requireRole } from "../auth.js";
 import { invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
@@ -301,6 +302,27 @@ router.post("/", requireRole(...GENERATE_ROLES), async (req, res) => {
           include: invoiceInclude,
         });
 
+        await recordAudit(
+          req,
+          {
+            action: "invoice.generated",
+            entityType: "invoice",
+            entityId: invoice.id,
+            summary: `Generated ${invoice.number} from ${purchaseOrder.number} (${invoice.total.toFixed(2)} ${invoice.currency}).`,
+            metadata: {
+              number: invoice.number,
+              purchaseOrderId: purchaseOrder.id,
+              purchaseOrderNumber: purchaseOrder.number,
+              rfqId: purchaseOrder.rfqId,
+              vendorId: purchaseOrder.vendorId,
+              total: invoice.total.toFixed(2),
+              currency: invoice.currency,
+              dueDate: dueDate ? dueDate.toISOString() : null,
+            },
+          },
+          { client: tx },
+        );
+
         return { invoiceId: invoice.id, created: true };
       },
       { maxWait: 10000, timeout: 20000 },
@@ -375,12 +397,12 @@ router.post("/:id/send", requireRole(...GENERATE_ROLES), async (req, res) => {
   const timestamp = now();
 
   if (!provider) {
-    await prisma.$transaction([
-      prisma.invoice.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.invoice.update({
         where: { id },
         data: { emailStatus: "not_configured", emailError: null, updatedAt: timestamp },
-      }),
-      prisma.invoiceEvent.create({
+      });
+      await tx.invoiceEvent.create({
         data: {
           invoiceId: id,
           actorId: req.user.id,
@@ -388,8 +410,19 @@ router.post("/:id/send", requireRole(...GENERATE_ROLES), async (req, res) => {
           detail: "No email provider is configured; the invoice was not sent.",
           createdAt: timestamp,
         },
-      }),
-    ]);
+      });
+      await recordAudit(
+        req,
+        {
+          action: "invoice.email_not_configured",
+          entityType: "invoice",
+          entityId: id,
+          summary: `Tried to email ${invoice.number}, but no email provider is configured.`,
+          metadata: { number: invoice.number, vendorId: invoice.vendorId },
+        },
+        { client: tx },
+      );
+    });
     throw new ApiError(503, `Email delivery is not configured, so ${invoice.number} was not sent.`, {
       code: "email_not_configured",
     });
@@ -409,8 +442,8 @@ router.post("/:id/send", requireRole(...GENERATE_ROLES), async (req, res) => {
   }
 
   if (delivery.status === "sent") {
-    await prisma.$transaction([
-      prisma.invoice.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.invoice.update({
         where: { id },
         data: {
           emailStatus: "sent",
@@ -420,8 +453,8 @@ router.post("/:id/send", requireRole(...GENERATE_ROLES), async (req, res) => {
           emailAttempts: { increment: 1 },
           updatedAt: timestamp,
         },
-      }),
-      prisma.invoiceEvent.create({
+      });
+      await tx.invoiceEvent.create({
         data: {
           invoiceId: id,
           actorId: req.user.id,
@@ -429,12 +462,23 @@ router.post("/:id/send", requireRole(...GENERATE_ROLES), async (req, res) => {
           detail: `Sent to the vendor address on file (${delivery.provider}).`,
           createdAt: timestamp,
         },
-      }),
-    ]);
+      });
+      await recordAudit(
+        req,
+        {
+          action: "invoice.email_sent",
+          entityType: "invoice",
+          entityId: id,
+          summary: `Emailed ${invoice.number} to ${to} via ${delivery.provider}.`,
+          metadata: { number: invoice.number, provider: delivery.provider, vendorId: invoice.vendorId },
+        },
+        { client: tx },
+      );
+    });
   } else {
     const errorText = safeErrorText(delivery.error || "The provider rejected the message.");
-    await prisma.$transaction([
-      prisma.invoice.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.invoice.update({
         where: { id },
         data: {
           emailStatus: "failed",
@@ -443,8 +487,8 @@ router.post("/:id/send", requireRole(...GENERATE_ROLES), async (req, res) => {
           emailAttempts: { increment: 1 },
           updatedAt: timestamp,
         },
-      }),
-      prisma.invoiceEvent.create({
+      });
+      await tx.invoiceEvent.create({
         data: {
           invoiceId: id,
           actorId: req.user.id,
@@ -452,8 +496,19 @@ router.post("/:id/send", requireRole(...GENERATE_ROLES), async (req, res) => {
           detail: "The provider could not deliver the invoice email.",
           createdAt: timestamp,
         },
-      }),
-    ]);
+      });
+      await recordAudit(
+        req,
+        {
+          action: "invoice.email_failed",
+          entityType: "invoice",
+          entityId: id,
+          summary: `Could not email ${invoice.number}: ${errorText}`,
+          metadata: { number: invoice.number, provider: delivery.provider ?? provider, vendorId: invoice.vendorId },
+        },
+        { client: tx },
+      );
+    });
     throw new ApiError(502, `The invoice email could not be delivered. ${errorText}`, {
       code: "email_failed",
     });

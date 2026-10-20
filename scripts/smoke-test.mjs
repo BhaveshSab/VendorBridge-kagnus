@@ -56,6 +56,9 @@ function client() {
     return {
       status: response.status,
       body: json,
+      text,
+      contentType: response.headers.get("content-type"),
+      contentDisposition: response.headers.get("content-disposition"),
       sessionCookieHttpOnly,
       cacheControl: response.headers.get("cache-control"),
     };
@@ -379,12 +382,152 @@ async function main() {
   check("logout succeeds", logout.status === 200);
   check("session is cleared after logout", (await logoutClient("GET", "/auth/me")).status === 401);
 
-  section("6. Module scope guard");
-  // Week 3 exposes approvals, purchase orders and invoices; later modules stay
-  // unimplemented until their own week lands.
-  for (const path of ["/reports", "/activity"]) {
-    check(`${path} is not exposed`, (await procurement("GET", path)).status === 404);
+  section("6. Week 4 reports and audit trail");
+  check("anonymous report access returns 401", (await client()("GET", "/reports/overview")).status === 401);
+  check("anonymous activity access returns 401", (await client()("GET", "/activity")).status === 401);
+  check("vendor cannot read spend reports (403)", (await vendor("GET", "/reports/overview")).status === 403);
+  check("vendor cannot read the audit trail (403)", (await vendor("GET", "/activity")).status === 403);
+  check("vendor cannot export reports (403)", (await vendor("GET", "/reports/export?type=spend")).status === 403);
+
+  const reportOverview = await procurement("GET", "/reports/overview?from=2026-01-01&to=2026-12-31");
+  check("procurement can read the report overview", reportOverview.status === 200);
+  check(
+    "report overview returns a currency, totals and monthly trend",
+    typeof reportOverview.body?.currency === "string" &&
+      typeof reportOverview.body?.totals?.purchaseOrderValue === "string" &&
+      Array.isArray(reportOverview.body?.spendByMonth) &&
+      reportOverview.body.spendByMonth.length === 12,
+  );
+  check(
+    "report currency buckets reconcile with issued orders",
+    reportOverview.body?.currencies?.reduce((sum, bucket) => sum + bucket.orders, 0) ===
+      reportOverview.body?.totals?.allPurchaseOrders,
+  );
+  check(
+    "monthly spend reconciles with the reported order value",
+    Math.abs(
+      reportOverview.body?.spendByMonth?.reduce((sum, month) => sum + Number(month.total), 0) -
+        Number(reportOverview.body?.totals?.purchaseOrderValue),
+    ) < 0.01,
+  );
+  check(
+    "category shares add up to 100 percent",
+    Math.abs(
+      (reportOverview.body?.spendByCategory ?? []).reduce((sum, row) => sum + row.share, 0) - 100,
+    ) < 0.6,
+  );
+  check("manager can read the report overview", (await manager("GET", "/reports/overview")).status === 200);
+  check("admin can read the report overview", (await admin("GET", "/reports/overview")).status === 200);
+
+  const vendorPerformance = await procurement("GET", "/reports/vendors?from=2026-01-01&to=2026-12-31");
+  check("supplier performance report is available", vendorPerformance.status === 200 && Array.isArray(vendorPerformance.body?.rows));
+  check(
+    "supplier performance exposes win rate and lead time",
+    vendorPerformance.body?.rows?.some((row) => row.quoted > 0 && Number.isFinite(row.winRate)),
+  );
+
+  check(
+    "report rejects an inverted date range",
+    (await procurement("GET", "/reports/overview?from=2026-05-01&to=2026-01-01")).status === 422,
+  );
+  check(
+    "report rejects a malformed date",
+    (await procurement("GET", "/reports/overview?from=yesterday")).status === 422,
+  );
+  check(
+    "report rejects a range longer than one year",
+    (await procurement("GET", "/reports/overview?from=2020-01-01&to=2026-01-01")).status === 422,
+  );
+  check(
+    "report rejects an unknown export type",
+    (await procurement("GET", "/reports/export?type=salaries")).status === 422,
+  );
+
+  const spendCsv = await procurement("GET", "/reports/export?type=spend&from=2026-01-01&to=2026-12-31");
+  check("spend export returns a CSV file", spendCsv.status === 200 && spendCsv.contentType?.includes("text/csv"));
+  check(
+    "export sets an attachment filename",
+    spendCsv.contentDisposition?.includes("attachment; filename=\"vendorbridge-spend-"),
+  );
+  // fetch() strips a leading UTF-8 BOM when decoding text, so assert the header.
+  check(
+    "CSV starts with the spend header row",
+    spendCsv.text?.replace(/^\ufeff/, "").startsWith("Vendor,Code,Category"),
+  );
+  check("CSV export marks the report no-store", spendCsv.cacheControl === "no-store");
+  const poCsv = await procurement("GET", "/reports/export?type=purchase-orders&from=2026-01-01&to=2026-12-31");
+  check(
+    "purchase order export names the document columns",
+    poCsv.status === 200 && poCsv.text?.includes("PO number") && poCsv.text?.includes("Total"),
+  );
+  const invoiceCsv = await procurement("GET", "/reports/export?type=invoices&from=2026-01-01&to=2026-12-31");
+  check(
+    "invoice export names the delivery columns",
+    invoiceCsv.status === 200 && invoiceCsv.text?.includes("Invoice number") && invoiceCsv.text?.includes("Email status"),
+  );
+
+  const activityFeed = await procurement("GET", "/activity");
+  check("procurement can read the audit trail", activityFeed.status === 200 && Array.isArray(activityFeed.body?.items));
+  check("the audit trail is recorded", (activityFeed.body?.total ?? 0) > 0);
+  check(
+    "audit entries name the actor, action and record",
+    activityFeed.body?.items?.every((entry) => entry.actor?.name && entry.action && entry.entityType),
+  );
+  check("audit facets list the actions on record", (activityFeed.body?.facets?.actions?.length ?? 0) > 0);
+  check("audit responses are marked no-store", activityFeed.cacheControl === "no-store");
+
+  const vendorAudit = await procurement("GET", `/activity?entityType=vendor&entityId=${vendorId}`);
+  check(
+    "creating and updating a vendor is audited",
+    vendorAudit.status === 200 &&
+      vendorAudit.body?.items?.some((entry) => entry.action === "vendor.created") &&
+      vendorAudit.body?.items?.some((entry) => entry.action === "vendor.updated"),
+  );
+  check(
+    "the audit entry records who made the change",
+    vendorAudit.body?.items?.every((entry) => entry.actor?.name === "Rohan Mehta"),
+  );
+  check(
+    "audit search matches the summary",
+    (await procurement("GET", `/activity?q=${encodeURIComponent(createdVendorName)}`)).body?.total >= 1,
+  );
+  check(
+    "audit pagination returns metadata",
+    (await procurement("GET", "/activity?page=1&pageSize=2")).body?.pageSize === 2,
+  );
+  check(
+    "audit rejects invalid pagination",
+    (await procurement("GET", "/activity?page=0")).status === 422,
+  );
+
+  const auditEntry = activityFeed.body?.items?.[0];
+  const auditDetail = await procurement("GET", `/activity/${auditEntry?.id}`);
+  check(
+    "an audit entry can be opened with its record history",
+    auditDetail.status === 200 && auditDetail.body?.event?.id === auditEntry?.id && Array.isArray(auditDetail.body?.related),
+  );
+  check("an unknown audit entry returns 404", (await procurement("GET", "/activity/99999999")).status === 404);
+
+  // The trail is append-only at the database level, not just by convention.
+  {
+    let updateBlocked = false;
+    let deleteBlocked = false;
+    const { prisma: auditDb } = await import("../server/db.js");
+    try {
+      await auditDb.$executeRaw`UPDATE "audit_logs" SET "summary" = 'tampered' WHERE "id" = ${auditEntry?.id}`;
+    } catch {
+      updateBlocked = true;
+    }
+    try {
+      await auditDb.$executeRaw`DELETE FROM "audit_logs" WHERE "id" = ${auditEntry?.id}`;
+    } catch {
+      deleteBlocked = true;
+    }
+    await auditDb.$disconnect().catch(() => {});
+    check("audit entries cannot be updated at the database level", updateBlocked);
+    check("audit entries cannot be deleted at the database level", deleteBlocked);
   }
+
   for (const path of ["/approvals", "/purchase-orders", "/invoices"]) {
     check(`anonymous ${path} returns 401`, (await client()("GET", path)).status === 401);
     check(`week 3 responses for ${path} are no-store`, (await procurement("GET", path)).cacheControl === "no-store");
@@ -408,6 +551,11 @@ async function main() {
   const deleted = await freshClient.call("DELETE", `/vendors/${vendorId}`);
   check("procurement can delete a vendor", deleted.status === 200);
   check("deleted vendor is gone", (await freshClient.call("GET", `/vendors/${vendorId}`)).status === 404);
+  const deleteAudit = await freshClient.call("GET", `/activity?entityType=vendor&entityId=${vendorId}`);
+  check(
+    "deleting a vendor is recorded in the audit trail",
+    deleteAudit.status === 200 && deleteAudit.body?.items?.some((entry) => entry.action === "vendor.deleted"),
+  );
 
   // -------------------------------------------------------------------------
   // Week 2 — RFQ and quotation workflow
@@ -738,15 +886,16 @@ async function main() {
       "/rfqs",
       rfqBody({
         title: `[smoke] Deadline enforcement ${stamp}`,
-        // Generous window so slow (remote) databases still publish before the deadline.
-        deadline: new Date(Date.now() + 10000).toISOString(),
+        // Generous window so slow (remote) databases still publish before the deadline,
+        // even though the suite runs many requests before reaching this point.
+        deadline: new Date(Date.now() + 25000).toISOString(),
         vendorIds: [zenith.id],
       }),
     )
   ).body?.rfq;
   const publishExpiring = await procurement("POST", `/rfqs/${expiredRfq?.id}/publish`);
   check("expiring RFQ publishes before its deadline", publishExpiring.status === 200, String(publishExpiring.status));
-  await sleep(11000);
+  await sleep(26000);
   const lateSubmission = await zenithAccount.call("PUT", `/rfqs/${expiredRfq?.id}/quotation`, {
     deliveryDays: 2,
     items: expiredRfq.items.map((item) => ({ rfqItemId: item.id, unitPrice: "90" })),

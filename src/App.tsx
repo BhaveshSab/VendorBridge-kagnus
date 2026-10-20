@@ -24,6 +24,8 @@ const PurchaseOrderDetail = lazy(() => import("./pages/PurchaseOrderDetail"));
 const Invoices = lazy(() => import("./pages/Invoices"));
 const InvoiceDetail = lazy(() => import("./pages/InvoiceDetail"));
 const InvoicePrint = lazy(() => import("./pages/InvoicePrint"));
+const Reports = lazy(() => import("./pages/Reports"));
+const Activity = lazy(() => import("./pages/Activity"));
 const Profile = lazy(() => import("./pages/Profile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -154,6 +156,22 @@ export default function App() {
               element={
                 <RequireRole roles={["admin", "procurement", "manager", "vendor"]}>
                   <InvoiceDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager"]}>
+                  <Reports />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/activity"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager"]}>
+                  <Activity />
                 </RequireRole>
               }
             />

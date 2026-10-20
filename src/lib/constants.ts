@@ -1,8 +1,10 @@
 import {
+  BarChart3,
   Building2,
   ClipboardCheck,
   ClipboardList,
   FileText,
+  History,
   LayoutDashboard,
   ReceiptText,
   UserRound,
@@ -86,6 +88,13 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
       },
       { label: "Purchase orders", to: "/purchase-orders", icon: FileText },
       { label: "Invoices", to: "/invoices", icon: ReceiptText },
+    ],
+  },
+  {
+    title: "Insights",
+    items: [
+      { label: "Reports", to: "/reports", icon: BarChart3, roles: ["admin", "procurement", "manager"] },
+      { label: "Activity log", to: "/activity", icon: History, roles: ["admin", "procurement", "manager"] },
     ],
   },
 ];

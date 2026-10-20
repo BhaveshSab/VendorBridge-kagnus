@@ -217,6 +217,19 @@ try {
   if (firstItem) await firstItem.type("14-inch business laptop");
   await shot(procurement, "14-create-rfq.png", { fullPage: true });
 
+  // --- Week 4 screens ------------------------------------------------------
+  await capture(procurement, "/reports", "33-week4-reports.png");
+  await procurement.select('select[aria-label="Reporting period"]', "365");
+  await settle(procurement, 1000);
+  await shot(procurement, "34-week4-reports-trend.png", { fullPage: true });
+  await capture(procurement, "/activity", "35-week4-activity.png");
+  await procurement.select('select[aria-label="Filter by record type"]', "purchase_order");
+  await settle(procurement, 1000);
+  await shot(procurement, "35-week4-activity.png");
+  await procurement.click("tbody tr");
+  await settle(procurement, 1200);
+  await shot(procurement, "36-week4-audit-detail.png");
+
   // Cookies are shared across pages in one browser, so the vendor session is
   // established only after every procurement capture is finished.
   const vendor = await openPage(browser, vendorToken);

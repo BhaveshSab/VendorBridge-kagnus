@@ -14,16 +14,27 @@ export function DonutChart({
   segments,
   totalLabel,
   totalValue,
+  layout = "row",
+  formatValue = formatNumber,
 }: {
   segments: { label: string; value: number }[];
   totalLabel: string;
   totalValue: string;
+  /** "column" stacks the legend under the ring, for narrow cards with long values. */
+  layout?: "row" | "column";
+  formatValue?: (value: number) => string;
 }) {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0) || 1;
   let offset = 0;
 
   return (
-    <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-8">
+    <div
+      className={
+        layout === "column"
+          ? "flex flex-col items-center gap-4"
+          : "flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-8"
+      }
+    >
       <div className="relative h-36 w-36 shrink-0">
         <svg viewBox="0 0 42 42" className="h-full w-full -rotate-90 drop-shadow-xs" role="img" aria-label="Distribution chart">
           <circle cx="21" cy="21" r="15.915" fill="none" stroke="#f1f5f9" strokeWidth="6" />
@@ -70,7 +81,7 @@ export function DonutChart({
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-[11px] font-medium text-muted">{percent}%</span>
-                <span className="font-bold text-ink bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">{formatNumber(segment.value)}</span>
+                <span className="font-bold text-ink bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">{formatValue(segment.value)}</span>
               </div>
             </li>
           );

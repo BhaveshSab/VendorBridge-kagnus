@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { recordAudit } from "../audit.js";
 import { ApiError, parse, requireAuth, requireRole } from "../auth.js";
 import { invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
@@ -286,6 +287,25 @@ router.post("/", requireRole(...REQUEST_ROLES), async (req, res) => {
           },
         },
       });
+      await recordAudit(
+        req,
+        {
+          action: "approval.requested",
+          entityType: "approval",
+          entityId: approval.id,
+          summary: `Requested approval for ${quotation.rfq.reference} — ${quotation.vendor.name} at ${quotation.total.toFixed(2)} ${quotation.currency}.`,
+          metadata: {
+            rfqId: quotation.rfqId,
+            reference: quotation.rfq.reference,
+            quotationId: quotation.id,
+            vendorId: quotation.vendorId,
+            revision: quotation.revision,
+            total: quotation.total.toFixed(2),
+            currency: quotation.currency,
+          },
+        },
+        { client: tx },
+      );
       return approval;
     },
     { maxWait: 10000, timeout: 20000 },
@@ -368,6 +388,26 @@ async function decide(req, res, decision) {
           createdAt: timestamp,
         },
       });
+
+      await recordAudit(
+        req,
+        {
+          action: decision === "approved" ? "approval.approved" : "approval.rejected",
+          entityType: "approval",
+          entityId: id,
+          summary: `${decision === "approved" ? "Approved" : "Rejected"} the quotation for ${approval.rfq.reference}${
+            data.remarks ? ` — “${data.remarks}”` : "."
+          }`,
+          metadata: {
+            rfqId: approval.rfqId,
+            reference: approval.rfq.reference,
+            quotationId: approval.quotationId,
+            decision,
+            remarks: data.remarks || null,
+          },
+        },
+        { client: tx },
+      );
 
       return tx.approvalRequest.findUnique({ where: { id }, include: detailInclude });
     },

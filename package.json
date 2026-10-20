@@ -2,7 +2,7 @@
   "name": "vendorbridge",
   "private": true,
   "version": "1.0.0",
-  "description": "VendorBridge — Procurement & Vendor Management ERP (Kagnus Week 1)",
+  "description": "VendorBridge — Procurement & Vendor Management ERP (Kagnus Weeks 1–4)",
   "type": "module",
   "engines": {
     "node": ">=22.5.0"
@@ -20,6 +20,7 @@
     "db:status": "node scripts/db-status.js",
     "db:cleanup-tests": "node scripts/cleanup-test-data.mjs",
     "db:seed-demo": "node scripts/seed-week12-demo.mjs",
+    "db:seed-week4": "node scripts/seed-week4-demo.mjs",
     "db:setup": "npm run db:generate && npm run db:deploy && npm run seed && npm run db:status",
     "db:studio": "prisma studio",
     "test:api": "node scripts/smoke-test.mjs",
