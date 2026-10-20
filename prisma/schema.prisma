@@ -23,6 +23,14 @@ model User {
   passwordResets PasswordReset[]
   createdRfqs    Rfq[]           @relation("RfqCreator")
 
+  // Week 3 — approval, purchase order and invoice workflow.
+  requestedApprovals ApprovalRequest[] @relation("ApprovalRequester")
+  decidedApprovals   ApprovalRequest[] @relation("ApprovalApprover")
+  approvalEvents     ApprovalEvent[]   @relation("ApprovalEventActor")
+  purchaseOrders     PurchaseOrder[]   @relation("PurchaseOrderCreator")
+  invoices           Invoice[]         @relation("InvoiceCreator")
+  invoiceEvents      InvoiceEvent[]    @relation("InvoiceEventActor")
+
   @@map("users")
 }
 
@@ -38,28 +46,30 @@ model PasswordReset {
 }
 
 model Vendor {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique
-  name        String
-  category    String
-  gstin       String?
-  email       String
-  phone       String?
-  address     String?
-  city        String?
-  country     String?
-  contactName String?  @map("contact_name")
-  status      String   @default("Pending")
-  rating      Float    @default(0)
-  notes       String?
-  userId      Int?     @map("user_id")
-  createdBy   Int?     @map("created_by")
-  createdAt   DateTime @map("created_at")
-  updatedAt   DateTime @map("updated_at")
-  account     User?    @relation("VendorAccount", fields: [userId], references: [id], onDelete: SetNull)
-  creator     User?    @relation("VendorCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  assignments RfqAssignment[]
-  quotations  Quotation[]
+  id             Int             @id @default(autoincrement())
+  code           String          @unique
+  name           String
+  category       String
+  gstin          String?
+  email          String
+  phone          String?
+  address        String?
+  city           String?
+  country        String?
+  contactName    String?         @map("contact_name")
+  status         String          @default("Pending")
+  rating         Float           @default(0)
+  notes          String?
+  userId         Int?            @map("user_id")
+  createdBy      Int?            @map("created_by")
+  createdAt      DateTime        @map("created_at")
+  updatedAt      DateTime        @map("updated_at")
+  account        User?           @relation("VendorAccount", fields: [userId], references: [id], onDelete: SetNull)
+  creator        User?           @relation("VendorCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  assignments    RfqAssignment[]
+  quotations     Quotation[]
+  purchaseOrders PurchaseOrder[]
+  invoices       Invoice[]
 
   @@index([status])
   @@index([category])
@@ -73,23 +83,26 @@ model Vendor {
 // a price total, and the database CHECK constraints reject negative amounts.
 
 model Rfq {
-  id          Int       @id @default(autoincrement())
-  reference   String    @unique
-  title       String
-  description String?
-  currency    String
-  status      String    @default("draft")
-  deadline    DateTime
-  createdBy   Int       @map("created_by")
-  createdAt   DateTime  @map("created_at")
-  updatedAt   DateTime  @map("updated_at")
-  publishedAt DateTime? @map("published_at")
-  closedAt    DateTime? @map("closed_at")
-  cancelledAt DateTime? @map("cancelled_at")
-  creator     User      @relation("RfqCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  items       RfqItem[]
-  assignments RfqAssignment[]
-  quotations  Quotation[]
+  id             Int               @id @default(autoincrement())
+  reference      String            @unique
+  title          String
+  description    String?
+  currency       String
+  status         String            @default("draft")
+  deadline       DateTime
+  createdBy      Int               @map("created_by")
+  createdAt      DateTime          @map("created_at")
+  updatedAt      DateTime          @map("updated_at")
+  publishedAt    DateTime?         @map("published_at")
+  closedAt       DateTime?         @map("closed_at")
+  cancelledAt    DateTime?         @map("cancelled_at")
+  creator        User              @relation("RfqCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  items          RfqItem[]
+  assignments    RfqAssignment[]
+  quotations     Quotation[]
+  approvals      ApprovalRequest[]
+  purchaseOrders PurchaseOrder[]
+  invoices       Invoice[]
 
   @@index([status])
   @@index([deadline])
@@ -127,32 +140,35 @@ model RfqAssignment {
 }
 
 model Quotation {
-  id             Int             @id @default(autoincrement())
-  rfqId          Int             @map("rfq_id")
-  vendorId       Int             @map("vendor_id")
+  id             Int               @id @default(autoincrement())
+  rfqId          Int               @map("rfq_id")
+  vendorId       Int               @map("vendor_id")
   currency       String
-  deliveryDays   Int             @map("delivery_days")
-  deliveryTerms  String?         @map("delivery_terms")
+  deliveryDays   Int               @map("delivery_days")
+  deliveryTerms  String?           @map("delivery_terms")
   notes          String?
-  taxPercent     Decimal         @default(0) @db.Decimal(5, 2) @map("tax_percent")
-  subtotal       Decimal         @db.Decimal(14, 2)
-  taxAmount      Decimal         @db.Decimal(14, 2) @map("tax_amount")
-  shippingAmount Decimal         @db.Decimal(14, 2) @map("shipping_amount")
-  total          Decimal         @db.Decimal(14, 2)
-  revision       Int             @default(1)
-  status         String          @default("submitted")
-  supersedesId   Int?            @unique @map("supersedes_id")
-  supersededAt   DateTime?       @map("superseded_at")
-  submittedAt    DateTime        @map("submitted_at")
-  updatedAt      DateTime        @map("updated_at")
-  rfq            Rfq             @relation(fields: [rfqId], references: [id], onDelete: Restrict)
-  vendor         Vendor          @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  taxPercent     Decimal           @default(0) @map("tax_percent") @db.Decimal(5, 2)
+  subtotal       Decimal           @db.Decimal(14, 2)
+  taxAmount      Decimal           @map("tax_amount") @db.Decimal(14, 2)
+  shippingAmount Decimal           @map("shipping_amount") @db.Decimal(14, 2)
+  total          Decimal           @db.Decimal(14, 2)
+  revision       Int               @default(1)
+  submittedAt    DateTime          @map("submitted_at")
+  updatedAt      DateTime          @map("updated_at")
+  // Append-only bid history: when a vendor revises, the previous row keeps its
+  // line items and only gains this timestamp instead of being deleted.
+  supersededAt   DateTime?         @map("superseded_at")
+  rfq            Rfq               @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  vendor         Vendor            @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   items          QuotationItem[]
-  supersedes     Quotation?      @relation("QuotationRevision", fields: [supersedesId], references: [id], onDelete: Restrict)
-  supersededBy   Quotation?      @relation("QuotationRevision")
+  approvals      ApprovalRequest[]
+  purchaseOrder  PurchaseOrder?
 
+  // "One live bid per vendor per RFQ" is enforced by the partial unique index
+  // quotations_active_rfq_vendor_key (WHERE superseded_at IS NULL) in the
+  // migration — Prisma cannot express a partial index, but superseded revisions
+  // still have to coexist under the same (rfq, vendor) pair.
   @@unique([rfqId, vendorId, revision])
-  @@index([rfqId, vendorId, status])
   @@index([rfqId])
   @@index([vendorId])
   @@map("quotations")
@@ -162,10 +178,10 @@ model QuotationItem {
   id          Int       @id @default(autoincrement())
   quotationId Int       @map("quotation_id")
   rfqItemId   Int       @map("rfq_item_id")
-  unitPrice   Decimal   @db.Decimal(14, 2) @map("unit_price")
-  lineTotal   Decimal   @db.Decimal(14, 2) @map("line_total")
-  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Restrict)
-  rfqItem     RfqItem   @relation(fields: [rfqItemId], references: [id], onDelete: Restrict)
+  unitPrice   Decimal   @map("unit_price") @db.Decimal(14, 2)
+  lineTotal   Decimal   @map("line_total") @db.Decimal(14, 2)
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  rfqItem     RfqItem   @relation(fields: [rfqItemId], references: [id], onDelete: Cascade)
 
   @@unique([quotationId, rfqItemId])
   @@index([rfqItemId])
@@ -177,6 +193,171 @@ model Counter {
   value Int
 
   @@map("counters")
+}
+
+// ---------------------------------------------------------------------------
+// Week 3 — approval, purchase order and invoice workflow.
+//
+// The approval row owns an immutable snapshot of the quotation terms that were
+// reviewed, so a decision stays traceable even though the quotation is locked
+// from revision once it is submitted for approval. A partial unique index (see
+// the migration) allows at most one pending/approved request per RFQ, and the
+// unique keys on quotation/purchase order make duplicate documents impossible.
+// ---------------------------------------------------------------------------
+
+model ApprovalRequest {
+  id                Int             @id @default(autoincrement())
+  rfqId             Int             @map("rfq_id")
+  quotationId       Int             @unique @map("quotation_id")
+  quotationRevision Int             @map("quotation_revision")
+  requesterId       Int             @map("requester_id")
+  status            String          @default("pending")
+  requestRemarks    String?         @map("request_remarks")
+  requestedAt       DateTime        @map("requested_at")
+  approverId        Int?            @map("approver_id")
+  decidedAt         DateTime?       @map("decided_at")
+  decisionRemarks   String?         @map("decision_remarks")
+  snapshot          Json
+  rfq               Rfq             @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  quotation         Quotation       @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  requester         User            @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  approver          User?           @relation("ApprovalApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  events            ApprovalEvent[]
+  purchaseOrder     PurchaseOrder?
+
+  @@index([status])
+  @@index([rfqId])
+  @@index([requesterId])
+  @@map("approval_requests")
+}
+
+model ApprovalEvent {
+  id         Int             @id @default(autoincrement())
+  approvalId Int             @map("approval_id")
+  actorId    Int             @map("actor_id")
+  type       String
+  remarks    String?
+  createdAt  DateTime        @map("created_at")
+  approval   ApprovalRequest @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  actor      User            @relation("ApprovalEventActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([approvalId])
+  @@map("approval_events")
+}
+
+model PurchaseOrder {
+  id                Int                 @id @default(autoincrement())
+  number            String              @unique
+  rfqId             Int                 @map("rfq_id")
+  quotationId       Int                 @unique @map("quotation_id")
+  approvalRequestId Int                 @unique @map("approval_request_id")
+  vendorId          Int                 @map("vendor_id")
+  createdBy         Int                 @map("created_by")
+  currency          String
+  taxPercent        Decimal             @map("tax_percent") @db.Decimal(5, 2)
+  subtotal          Decimal             @db.Decimal(14, 2)
+  taxAmount         Decimal             @map("tax_amount") @db.Decimal(14, 2)
+  shippingAmount    Decimal             @map("shipping_amount") @db.Decimal(14, 2)
+  total             Decimal             @db.Decimal(14, 2)
+  status            String              @default("issued")
+  issuedAt          DateTime            @map("issued_at")
+  cancelledAt       DateTime?           @map("cancelled_at")
+  cancelReason      String?             @map("cancel_reason")
+  createdAt         DateTime            @map("created_at")
+  updatedAt         DateTime            @map("updated_at")
+  rfq               Rfq                 @relation(fields: [rfqId], references: [id], onDelete: Restrict)
+  quotation         Quotation           @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  approvalRequest   ApprovalRequest     @relation(fields: [approvalRequestId], references: [id], onDelete: Restrict)
+  vendor            Vendor              @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  creator           User                @relation("PurchaseOrderCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  items             PurchaseOrderItem[]
+  invoices          Invoice[]
+
+  @@index([vendorId])
+  @@index([status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              Int           @id @default(autoincrement())
+  purchaseOrderId Int           @map("purchase_order_id")
+  position        Int
+  description     String
+  quantity        Decimal       @db.Decimal(12, 3)
+  unit            String
+  unitPrice       Decimal       @map("unit_price") @db.Decimal(14, 2)
+  lineTotal       Decimal       @map("line_total") @db.Decimal(14, 2)
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([purchaseOrderId, position])
+  @@index([purchaseOrderId])
+  @@map("purchase_order_items")
+}
+
+model Invoice {
+  id              Int            @id @default(autoincrement())
+  number          String         @unique
+  purchaseOrderId Int            @unique @map("purchase_order_id")
+  rfqId           Int            @map("rfq_id")
+  vendorId        Int            @map("vendor_id")
+  createdBy       Int            @map("created_by")
+  currency        String
+  taxPercent      Decimal        @map("tax_percent") @db.Decimal(5, 2)
+  subtotal        Decimal        @db.Decimal(14, 2)
+  taxAmount       Decimal        @map("tax_amount") @db.Decimal(14, 2)
+  shippingAmount  Decimal        @map("shipping_amount") @db.Decimal(14, 2)
+  total           Decimal        @db.Decimal(14, 2)
+  status          String         @default("issued")
+  issueDate       DateTime       @map("issue_date")
+  dueDate         DateTime?      @map("due_date")
+  emailStatus     String         @default("not_sent") @map("email_status")
+  emailProvider   String?        @map("email_provider")
+  emailSentAt     DateTime?      @map("email_sent_at")
+  emailAttempts   Int            @default(0) @map("email_attempts")
+  emailError      String?        @map("email_error")
+  createdAt       DateTime       @map("created_at")
+  updatedAt       DateTime       @map("updated_at")
+  purchaseOrder   PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  rfq             Rfq            @relation(fields: [rfqId], references: [id], onDelete: Restrict)
+  vendor          Vendor         @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  creator         User           @relation("InvoiceCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  items           InvoiceItem[]
+  events          InvoiceEvent[]
+
+  @@index([vendorId])
+  @@index([status])
+  @@index([emailStatus])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          Int     @id @default(autoincrement())
+  invoiceId   Int     @map("invoice_id")
+  position    Int
+  description String
+  quantity    Decimal @db.Decimal(12, 3)
+  unit        String
+  unitPrice   Decimal @map("unit_price") @db.Decimal(14, 2)
+  lineTotal   Decimal @map("line_total") @db.Decimal(14, 2)
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, position])
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model InvoiceEvent {
+  id        Int      @id @default(autoincrement())
+  invoiceId Int      @map("invoice_id")
+  actorId   Int?     @map("actor_id")
+  type      String
+  detail    String?
+  createdAt DateTime @map("created_at")
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  actor     User?    @relation("InvoiceEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@map("invoice_events")
 }
 
 model RateLimit {

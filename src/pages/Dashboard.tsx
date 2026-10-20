@@ -5,7 +5,6 @@ import {
   Building2,
   CalendarDays,
   ClipboardList,
-  FileSpreadsheet,
   IndianRupee,
   Layers,
   Plus,
@@ -19,7 +18,7 @@ import { DonutChart } from "../components/charts";
 import { Page } from "../components/guards";
 import { Badge, Card, EmptyState, ErrorState, PageHeader, SkeletonBlock, StatCard } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
-import { formatDate } from "../lib/format";
+import { formatDate, formatMoney } from "../lib/format";
 import type { Vendor } from "../lib/types";
 import { useApi } from "../lib/useApi";
 
@@ -42,6 +41,13 @@ interface DashboardResponse {
     assigned?: number;
     submitted?: number;
   };
+  // Week 3 review counters. `null` for vendors: the approval queue is internal.
+  approvalSummary?: { pending: number; approved: number; rejected: number } | null;
+  documentSummary?: {
+    purchaseOrders: number;
+    invoices: number;
+    byCurrency: { currency: string; total: string; count: number }[];
+  };
 }
 
 const metricGridVariants: Variants = {
@@ -55,13 +61,6 @@ const metricCardVariants: Variants = {
 };
 
 const UPCOMING = [
-  {
-    badge: "Planned",
-    title: "Approvals, orders & invoices",
-    description: "Approve awards, generate purchase orders and issue invoices.",
-    icon: FileSpreadsheet,
-    badgeColor: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  },
   {
     badge: "Roadmap",
     title: "Reports & audit trail",
@@ -195,6 +194,17 @@ export default function Dashboard() {
   const isVendor = data.scope === "vendor";
   const activeVendors = data.statusCounts.Active ?? 0;
   const pendingVendors = data.statusCounts.Pending ?? 0;
+
+  // Week 3 cards: the review queue and the value of issued purchase orders.
+  const approvals = data.approvalSummary ?? null;
+  const poBuckets = data.documentSummary?.byCurrency ?? [];
+  const poCount = data.documentSummary?.purchaseOrders ?? 0;
+  const mainBucket = poBuckets[0];
+  const poValue = mainBucket ? formatMoney(mainBucket.total, mainBucket.currency) : "—";
+  const poHint =
+    poBuckets.length > 1
+      ? `${poCount} issued · ${poBuckets.length} currencies`
+      : `${poCount} issued PO${poCount === 1 ? "" : "s"}`;
   const statusSegments = ["Active", "Pending", "Inactive", "Blocked"]
     .map((status) => ({ label: status, value: data.statusCounts[status] ?? 0 }))
     .filter((segment) => segment.value > 0);
@@ -262,16 +272,20 @@ export default function Dashboard() {
           <motion.div variants={metricCardVariants}>
             <StatCard
               label="Pending approvals"
-              value="—"
-              hint="Scheduled release"
+              value={approvals ? approvals.pending : "—"}
+              hint={
+                approvals
+                  ? `${approvals.approved} approved · ${approvals.rejected} rejected`
+                  : "Internal decision queue"
+              }
               icon={<BadgeCheck size={18} />}
             />
           </motion.div>
           <motion.div variants={metricCardVariants}>
             <StatCard
-              label="PO value"
-              value="—"
-              hint="Scheduled release"
+              label={isVendor ? "My PO value" : "PO value"}
+              value={poValue}
+              hint={poHint}
               icon={<IndianRupee size={18} />}
             />
           </motion.div>
@@ -520,8 +534,8 @@ export default function Dashboard() {
             <Card className="p-5 border-blue-100 bg-gradient-to-br from-white to-blue-50/30">
               <p className="text-[13px] font-bold text-ink">Procurement workspace</p>
               <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-                Vendor management, RFQ publishing and quotation comparison are live. Approvals and purchase orders remain
-                scheduled for the next milestone.
+                Vendor management, RFQs, quotation comparison and the approval → purchase order → invoice workflow are
+                live. Reports and the audit trail remain on the roadmap.
               </p>
               <div className="mt-3.5 flex flex-col gap-2">
                 <Link to="/vendors" className="btn btn-ghost btn-sm w-full justify-center">

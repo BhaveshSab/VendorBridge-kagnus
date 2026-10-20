@@ -1,20 +1,20 @@
 {
-  "startedAt": "2026-10-19T14:14:12.148Z",
+  "startedAt": "2026-10-20T14:15:09.209Z",
   "appUrl": "http://localhost:4100",
   "database": "vendorbridge_e2e@127.0.0.1:55432",
   "rfq": {
-    "id": 45,
-    "reference": "RFQ-0045",
-    "title": "E2E Test RFQ mvfc3kt3-14l6",
+    "id": 56,
+    "reference": "RFQ-0055",
+    "title": "E2E Test RFQ mvgrkhat-irpw",
     "items": [
       {
-        "id": 89,
+        "id": 106,
         "description": "E2E sealed carton",
         "quantity": "10",
         "unit": "box"
       },
       {
-        "id": 90,
+        "id": 107,
         "description": "E2E packing tape",
         "quantity": "5",
         "unit": "pack"
@@ -54,7 +54,7 @@
     {
       "name": "invalid empty RFQ shows inline validation and creates nothing",
       "status": "PASS",
-      "detail": "total 0 -> 0"
+      "detail": "total 30 -> 30"
     },
     {
       "name": "two vendors can be assigned in the form",
@@ -69,7 +69,7 @@
     {
       "name": "RFQ received a unique RFQ-#### reference",
       "status": "PASS",
-      "detail": "RFQ-0045"
+      "detail": "RFQ-0055"
     },
     {
       "name": "RFQ persisted with title, description, currency and 2 line items",
@@ -84,7 +84,7 @@
     {
       "name": "deadline is stored in the future",
       "status": "PASS",
-      "detail": "2026-10-31T14:13:00.000Z"
+      "detail": "2026-11-01T14:13:00.000Z"
     },
     {
       "name": "detail page renders the saved reference, vendors, items and status",
@@ -237,9 +237,9 @@
       "detail": ""
     },
     {
-      "name": "RFQ list shows the created RFQs and live status counts",
+      "name": "RFQ list renders with live status counts",
       "status": "PASS",
-      "detail": ""
+      "detail": "8 row(s)"
     },
     {
       "name": "search narrows the procurement list to the test RFQ",
@@ -254,7 +254,7 @@
     {
       "name": "reference sort orders the list ascending",
       "status": "PASS",
-      "detail": "RFQ-0045, RFQ-0046, RFQ-0047, RFQ-0048"
+      "detail": "RFQ-0008, RFQ-0009, RFQ-0010, RFQ-0011"
     },
     {
       "name": "anonymous users get 401 on RFQ and quotation data",
@@ -294,7 +294,7 @@
     {
       "name": "past deadlines, empty line items, duplicate or unknown vendors are rejected without creating an RFQ",
       "status": "PASS",
-      "detail": "422,422,422,422 (rows 7->7)"
+      "detail": "422,422,422,422 (rows 37->37)"
     },
     {
       "name": "invalid quotation payloads are rejected with 422",
@@ -304,12 +304,17 @@
     {
       "name": "rejected submissions did not mutate the database",
       "status": "PASS",
-      "detail": "count 2->2, Nova total 17666.00->18356.00 (only the valid revision changed it)"
+      "detail": "rows 3->3, live bids for Nova 1->1, Nova total 18356.00->18356.00"
     },
     {
-      "name": "one quotation row per vendor despite revisions",
+      "name": "one live quotation per vendor despite append-only revisions",
       "status": "PASS",
       "detail": ""
+    },
+    {
+      "name": "superseded revisions keep their line items (append-only audit trail)",
+      "status": "PASS",
+      "detail": "rev 1 items 2 superseded true; rev 2 items 2 superseded false"
     },
     {
       "name": "invalid RFQ ids and unknown filters are rejected",
@@ -372,9 +377,14 @@
       "detail": ""
     },
     {
-      "name": "two quotation rows link to the correct RFQ and vendors",
+      "name": "live quotation rows link to the correct RFQ and vendors",
       "status": "PASS",
       "detail": ""
+    },
+    {
+      "name": "the superseded Nova revision is retained for audit",
+      "status": "PASS",
+      "detail": "superseded revisions for Nova: rev 1 items 2"
     },
     {
       "name": "stored prices, totals, notes and delivery data match the submissions",
@@ -392,9 +402,9 @@
       "detail": "orphans 0, duplicates 0"
     },
     {
-      "name": "revision count advanced without duplicating the quotation",
+      "name": "revision advanced in place: one live row plus one superseded row per vendor",
       "status": "PASS",
-      "detail": ""
+      "detail": "total rows 3, live 2"
     },
     {
       "name": "no browser runtime errors were observed",
@@ -402,21 +412,21 @@
       "detail": ""
     },
     {
-      "name": "test RFQs (and cascaded children) were removed",
+      "name": "test RFQs and their quotation history were removed",
       "status": "PASS",
-      "detail": "7 RFQ(s) removed"
+      "detail": "7 RFQ(s) removed, surviving quotation rows 0/2"
     },
     {
-      "name": "seeded users and vendors are untouched",
+      "name": "the run left the register exactly as it found it",
       "status": "PASS",
-      "detail": "users 6, vendors 16"
+      "detail": "users 18->18, vendors 26->26, quotations 24->24, live 18->18"
     }
   ],
   "cleanup": {
     "removedRfqs": 7,
     "remainingRfqs": 0,
-    "users": 6,
-    "vendors": 16,
-    "quotations": 0
+    "users": 18,
+    "vendors": 26,
+    "quotations": 24
   }
 }

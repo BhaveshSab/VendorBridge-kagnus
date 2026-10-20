@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { ApiError, currentVendorFor, parse, requireAuth, requireRole } from "../auth.js";
+import { cachedJson, invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
 import { vendorOut } from "../serializers.js";
 
@@ -57,18 +58,31 @@ function vendorData(data, extra = {}) {
   };
 }
 
+// Category counts only move when a vendor is created, edited or deleted, so a
+// one-minute cache is safe — and those writes advance the namespace version.
+const VENDOR_META_NAMESPACE = "vendors-meta";
+const VENDOR_META_TTL_SECONDS = 60;
+
 router.get("/meta", requireRole("admin", "procurement", "manager"), async (_req, res) => {
-  const [categories, total] = await Promise.all([
-    prisma.vendor.groupBy({ by: ["category"], _count: { _all: true } }),
-    prisma.vendor.count(),
-  ]);
-  res.json({
-    categories: categories
-      .map((row) => ({ name: row.category, count: row._count._all }))
-      .sort((a, b) => a.name.localeCompare(b.name)),
-    statuses: VENDOR_STATUSES,
-    total,
-  });
+  const payload = await cachedJson(
+    VENDOR_META_NAMESPACE,
+    "all",
+    VENDOR_META_TTL_SECONDS,
+    async () => {
+      const [categories, total] = await Promise.all([
+        prisma.vendor.groupBy({ by: ["category"], _count: { _all: true } }),
+        prisma.vendor.count(),
+      ]);
+      return {
+        categories: categories
+          .map((row) => ({ name: row.category, count: row._count._all }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        statuses: VENDOR_STATUSES,
+        total,
+      };
+    },
+  );
+  res.json(payload);
 });
 
 router.get("/", async (req, res) => {
@@ -163,6 +177,7 @@ router.post("/", requireRole("admin", "procurement"), async (req, res) => {
     });
   });
 
+  await invalidateCache(VENDOR_META_NAMESPACE, "dashboard");
   res.status(201).json({ vendor: vendorOut(vendor) });
 });
 
@@ -184,6 +199,7 @@ router.put("/:id", requireRole("admin", "procurement"), async (req, res) => {
     where: { id },
     data: vendorData(data, { updatedAt: now() }),
   });
+  await invalidateCache(VENDOR_META_NAMESPACE, "dashboard");
   res.json({ vendor: vendorOut(vendor) });
 });
 
@@ -199,6 +215,7 @@ router.delete("/:id", requireRole("admin", "procurement"), async (req, res) => {
     }
     throw error;
   }
+  await invalidateCache(VENDOR_META_NAMESPACE, "dashboard");
   res.json({ ok: true });
 });
 

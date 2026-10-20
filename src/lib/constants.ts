@@ -1,4 +1,12 @@
-import { Building2, ClipboardList, LayoutDashboard, UserRound } from "lucide-react";
+import {
+  Building2,
+  ClipboardCheck,
+  ClipboardList,
+  FileText,
+  LayoutDashboard,
+  ReceiptText,
+  UserRound,
+} from "lucide-react";
 import type { Role } from "./types";
 
 export const VENDOR_CATEGORIES = [
@@ -70,6 +78,14 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
       { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
       { label: "Vendors", to: "/vendors", icon: Building2 },
       { label: "RFQs & quotations", to: "/rfqs", icon: ClipboardList },
+      {
+        label: "Approvals",
+        to: "/approvals",
+        icon: ClipboardCheck,
+        roles: ["admin", "procurement", "manager"],
+      },
+      { label: "Purchase orders", to: "/purchase-orders", icon: FileText },
+      { label: "Invoices", to: "/invoices", icon: ReceiptText },
     ],
   },
 ];

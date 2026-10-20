@@ -9,4 +9,6 @@ server.log
 *.log
 .DS_Store
 .db-data/
+.db-data-e2e/
+.tmp/
 .vercel/

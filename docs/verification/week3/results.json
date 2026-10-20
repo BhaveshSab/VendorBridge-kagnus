@@ -1,0 +1,553 @@
+{
+  "runAt": "2026-10-20T14:09:26.579Z",
+  "durationMs": 255345,
+  "baseUrl": "http://localhost:4100",
+  "database": "127.0.0.1/vendorbridge_e2e",
+  "totals": {
+    "passed": 106,
+    "failed": 0,
+    "total": 106
+  },
+  "screenshots": [
+    "01-approval-requested.png",
+    "02-approval-approved.png",
+    "03-purchase-order.png",
+    "04-invoice.png",
+    "05-invoice-print.png",
+    "06-invoice-email-sent.png",
+    "07-vendor-purchase-order.png",
+    "08-approval-rejected.png"
+  ],
+  "results": [
+    {
+      "name": "API and database report ready",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Database under test is a disposable loopback database",
+      "status": "PASS",
+      "detail": "/vendorbridge_e2e"
+    },
+    {
+      "name": "Seeded test vendors are present",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "UI request lands on the approval detail page",
+      "status": "PASS",
+      "detail": "http://localhost:4100/approvals/10"
+    },
+    {
+      "name": "Approval is stored as pending for the selected quotation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Approval references the correct quotation and revision",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Snapshot captures the reviewed total",
+      "status": "PASS",
+      "detail": "346358.00 vs 346358.00"
+    },
+    {
+      "name": "Request event persisted with the requester",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Pending approval and remarks persist after reload",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Manager sees the requested quotation and its lines",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Manager sees the requester note",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Decision UI shows the approved state",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Decision UI shows the approver identity in the timeline",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Decision persisted with approver, time and remarks",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Approval timeline has requested + approved events",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Approved state and history persist after reload",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Purchase order page loaded after approval",
+      "status": "PASS",
+      "detail": "http://localhost:4100/purchase-orders/5"
+    },
+    {
+      "name": "Purchase order has a unique human-readable number",
+      "status": "PASS",
+      "detail": "PO-0005"
+    },
+    {
+      "name": "Purchase order links to the approved quotation and RFQ",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Purchase order vendor matches the quotation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Purchase order line count matches the quotation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Purchase order total matches the approved quotation",
+      "status": "PASS",
+      "detail": "346358 vs 346358.00"
+    },
+    {
+      "name": "Purchase order subtotal/tax/shipping match the quotation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "UI shows the purchase order number",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "UI shows 'No invoice generated yet'",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Purchase order persists after reload",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Invoice generated from the purchase order",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Invoice number is unique-formatted",
+      "status": "PASS",
+      "detail": "INV-0004"
+    },
+    {
+      "name": "Invoice links to the same PO, RFQ and vendor",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Invoice carries the PO totals without re-taxing",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Invoice subtotal + tax + delivery equals its total",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Tax is single-applied at the approved percentage",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Invoice screen shows the persisted number",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Invoice screen shows the total due",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "PDF response is application/pdf",
+      "status": "PASS",
+      "detail": "application/pdf"
+    },
+    {
+      "name": "PDF filename is derived from the invoice number",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "PDF starts with the %PDF signature",
+      "status": "PASS",
+      "detail": "%PDF-"
+    },
+    {
+      "name": "PDF contains the invoice number",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "PDF contains the vendor name",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "PDF contains the purchase order number",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "PDF renders the persisted total",
+      "status": "PASS",
+      "detail": "3,46,358.00"
+    },
+    {
+      "name": "Print view contains the invoice content",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Print view excludes application navigation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Delivery state persisted as sent",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Provider recorded",
+      "status": "PASS",
+      "detail": "dev-outbox"
+    },
+    {
+      "name": "Send timestamp recorded",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Attempt counter incremented",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Email was addressed to the vendor address on record",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Email carries the invoice attachment",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Retry delivery succeeds",
+      "status": "PASS",
+      "detail": "200"
+    },
+    {
+      "name": "Retry does not create another invoice",
+      "status": "PASS",
+      "detail": "1"
+    },
+    {
+      "name": "Vendor can read its own purchase order",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Vendor sees no approval remarks",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Vendor sees no internal document actions",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Vendor can read its own invoice",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "anonymous approvals -> 401",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "anonymous purchase orders -> 401",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "anonymous invoices -> 401",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "anonymous invoice PDF -> 401",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor cannot list approvals -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor cannot request approval -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor cannot decide -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor cannot create a purchase order -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor cannot create an invoice -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor cannot send an invoice -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "manager cannot create a purchase order -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "manager cannot create an invoice -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "manager cannot send an invoice -> 403",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "manager can read purchase orders -> 200",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "another vendor's purchase order -> 404",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "name": "another vendor's invoice -> 404",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "name": "another vendor's invoice PDF -> 404",
+      "status": "PASS",
+      "detail": "404"
+    },
+    {
+      "name": "duplicate approval for the same quotation -> 409",
+      "status": "PASS",
+      "detail": "409"
+    },
+    {
+      "name": "a second quotation for an approved RFQ cannot be approved -> 409",
+      "status": "PASS",
+      "detail": "409"
+    },
+    {
+      "name": "repeating PO generation returns the existing document",
+      "status": "PASS",
+      "detail": "status 200"
+    },
+    {
+      "name": "repeating invoice generation returns the existing document",
+      "status": "PASS",
+      "detail": "status 200"
+    },
+    {
+      "name": "client-supplied PO totals/vendor/status are ignored",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "rejection without remarks -> 422",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "name": "manager can reject with remarks",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "PO from a rejected quotation -> 409",
+      "status": "PASS",
+      "detail": "409"
+    },
+    {
+      "name": "deciding an already-decided request -> 409",
+      "status": "PASS",
+      "detail": "409"
+    },
+    {
+      "name": "UI shows the rejection reason and no approve control",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "requester cannot approve their own request -> 403",
+      "status": "PASS",
+      "detail": "403"
+    },
+    {
+      "name": "self-approval attempt did not change the record",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "PO from a pending approval -> 409",
+      "status": "PASS",
+      "detail": "409"
+    },
+    {
+      "name": "approval for the cancel-path RFQ succeeds",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "issued purchase order can be cancelled with a reason",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "invoice from a cancelled PO -> 409",
+      "status": "PASS",
+      "detail": "409"
+    },
+    {
+      "name": "simultaneous approval requests for one RFQ -> exactly one accepted",
+      "status": "PASS",
+      "detail": "201,409"
+    },
+    {
+      "name": "database holds one active approval for the RFQ",
+      "status": "PASS",
+      "detail": "1"
+    },
+    {
+      "name": "simultaneous decisions -> one decision wins, the other is rejected",
+      "status": "PASS",
+      "detail": "200,409"
+    },
+    {
+      "name": "only one approved event was written",
+      "status": "PASS",
+      "detail": "1"
+    },
+    {
+      "name": "simultaneous PO generation creates exactly one purchase order",
+      "status": "PASS",
+      "detail": "200,201 count=1"
+    },
+    {
+      "name": "simultaneous invoice generation creates exactly one invoice",
+      "status": "PASS",
+      "detail": "201,200 count=1"
+    },
+    {
+      "name": "authenticated documents are not cacheable",
+      "status": "PASS",
+      "detail": "no-store"
+    },
+    {
+      "name": "invalid IDs return the standard validation error",
+      "status": "PASS",
+      "detail": "422"
+    },
+    {
+      "name": "purchase order vendor/RFQ/quotation relationships agree",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "invoice PO relationship agrees",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "no quotation has more than one purchase order",
+      "status": "PASS",
+      "detail": "[]"
+    },
+    {
+      "name": "no purchase order has more than one invoice",
+      "status": "PASS",
+      "detail": "[]"
+    },
+    {
+      "name": "vendors list still responds",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "RFQ list still responds",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "comparison still responds",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "dashboard still responds",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "vendor RFQ detail still responds",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "deleted 5/5 test RFQs",
+      "status": "PASS",
+      "detail": "remaining=0"
+    }
+  ]
+}

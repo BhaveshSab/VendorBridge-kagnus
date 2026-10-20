@@ -1,5 +1,6 @@
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { prisma } from "./db.js";
+import { noteRedisFailure, redisTransport, resolveRedisConfig } from "./redis.js";
 
 const DEFAULT_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_MESSAGE = {
@@ -67,24 +68,98 @@ class PrismaRateLimitStore {
   }
 }
 
+/**
+ * Express-rate-limit store that prefers Redis (Upstash in production) and
+ * silently falls back to the PostgreSQL store whenever Redis is unreachable or
+ * slow. Sign-in must never fail — or wait on a timeout — because the cache
+ * backend is down: a missed counter degrades to a database round trip, not a
+ * 500, and never blocks a legitimate login.
+ */
+class FailOpenStore {
+  constructor({ primary, fallback }) {
+    this.primary = primary;
+    this.fallback = fallback;
+  }
+
+  init(options) {
+    // RedisStore.init() loads its Lua scripts; if that fails the limiter must
+    // still be usable, so the rejection is swallowed here and every operation
+    // then falls through to PostgreSQL.
+    Promise.resolve()
+      .then(() => this.primary?.init?.(options))
+      .catch(noteRedisFailure);
+    this.fallback.init?.(options);
+  }
+
+  async #attempt(run) {
+    if (this.primary) {
+      try {
+        return await run(this.primary);
+      } catch (error) {
+        // Starts the shared cooldown, so a prolonged outage costs no latency
+        // per request instead of one Redis timeout each time.
+        noteRedisFailure(error);
+      }
+    }
+    return run(this.fallback);
+  }
+
+  increment(key) {
+    return this.#attempt((store) => store.increment(key));
+  }
+
+  decrement(key) {
+    return this.#attempt((store) => store.decrement(key));
+  }
+
+  resetKey(key) {
+    return this.#attempt((store) => store.resetKey(key));
+  }
+}
+
 async function createRateLimitStore(prefix) {
-  const redisUrl = process.env.REDIS_URL;
-  if (!redisUrl) return new PrismaRateLimitStore({ prefix });
+  const fallback = new PrismaRateLimitStore({ prefix });
+  if (!resolveRedisConfig()) return fallback;
 
   // Redis-backed counters when Redis is configured (shared across instances).
-  const { default: Redis } = await import("ioredis");
-  const { RedisStore } = await import("rate-limit-redis");
-  const client = new Redis(redisUrl, { maxRetriesPerRequest: 2 });
-  client.on("error", (error) => console.error("[rate-limit] redis error", error));
-  return new RedisStore({ prefix, sendCommand: (...args) => client.call(...args) });
+  // The transport is the single connection shared with the read cache, so a
+  // serverless instance holds at most one connection to Upstash. Construction
+  // is allowed to succeed while Redis is down: the commands themselves fail
+  // open onto PostgreSQL, and the store starts using Redis again by itself
+  // once the cooldown expires.
+  try {
+    const { RedisStore } = await import("rate-limit-redis");
+    const primary = new RedisStore({
+      prefix,
+      sendCommand: (...args) => redisCall(...args),
+    });
+    return new FailOpenStore({ primary, fallback });
+  } catch (error) {
+    noteRedisFailure(error);
+    return fallback;
+  }
+}
+
+/**
+ * Sends a raw command through the shared transport. Rejects (rather than
+ * resolving `null`) when Redis is unavailable or cooling down, because
+ * rate-limit-redis has no notion of "no reply" — the rejection is what makes
+ * FailOpenStore choose the database.
+ */
+async function redisCall(...args) {
+  const transport = await redisTransport();
+  if (!transport) throw new Error("redis is not configured or is cooling down");
+  return transport.call(...args);
 }
 
 /**
  * Builds a persistent rate limiter for the credential-sensitive auth endpoints.
  *
- * Counters live in Redis (when `REDIS_URL` is configured) or in the application
- * database, so they survive restarts and work across multiple Node.js
- * instances. Keys combine the client IP with the submitted email — the same
+ * Counters live in Redis (when a Redis target is configured — see redis.js,
+ * which accepts an Upstash REST URL plus token or a `rediss://` TCP URL) or in
+ * the application database, so they survive restarts and work across multiple
+ * Node.js instances. A Redis outage degrades to the database instead of
+ * failing the request. Keys combine the client IP with the submitted email — the same
  * granularity the previous in-memory throttle used.
  */
 export async function createAuthLimiter({

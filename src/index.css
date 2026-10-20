@@ -384,6 +384,26 @@
     border-color: #a7f3d0;
   }
 
+  /* Week 3 document and delivery states */
+  .badge-sent {
+    background: #ecfdf5;
+    color: #047857;
+    border-color: #a7f3d0;
+  }
+
+  .badge-not-sent,
+  .badge-not-configured {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #e2e8f0;
+  }
+
+  .badge-failed {
+    background: #fff1f2;
+    color: #be123c;
+    border-color: #fecdd3;
+  }
+
   /* Table */
   .table-container {
     width: 100%;
@@ -537,5 +557,33 @@
   }
   body {
     background: #fff;
+  }
+
+  /* Invoice print view: only the document sheet reaches the page. */
+  .print-shell {
+    padding: 0 !important;
+    max-width: none !important;
+    background: #fff !important;
+  }
+
+  .print-sheet {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .print-sheet table {
+    break-inside: auto;
+  }
+
+  .print-sheet tr {
+    break-inside: avoid;
+  }
+
+  @page {
+    size: A4;
+    margin: 14mm;
   }
 }

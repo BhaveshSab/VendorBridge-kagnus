@@ -1,6 +1,6 @@
-import { ArrowLeft, ArrowRight, ClipboardList, Eye, Inbox } from "lucide-react";
+import { ArrowLeft, ArrowRight, ClipboardList, Eye, Inbox, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Page } from "../components/guards";
 import {
   Badge,
@@ -8,25 +8,60 @@ import {
   Card,
   EmptyState,
   ErrorState,
+  Field,
   Modal,
   PageHeader,
   Select,
   SkeletonBlock,
+  Textarea,
 } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+import { api, errorMessage } from "../lib/api";
 import { formatDateTime, formatMoney } from "../lib/format";
-import type { RfqQuotationsResponse, RfqItem } from "../lib/types";
-import { useApi } from "../lib/useApi";
+import type { Quotation, RfqQuotationsResponse, RfqItem } from "../lib/types";
+import { useApi, useApiMutation } from "../lib/useApi";
 
 export default function RfqQuotations() {
   const { id } = useParams();
   const rfqId = Number(id);
+  const navigate = useNavigate();
+  const toast = useToast();
+  const { user } = useAuth();
+  const canRequestApproval = user?.role === "admin" || user?.role === "procurement";
   const [sort, setSort] = useState("total_asc");
   const [openQuotationId, setOpenQuotationId] = useState<number | null>(null);
+  const [requestFor, setRequestFor] = useState<Quotation | null>(null);
+  const [requestRemarks, setRequestRemarks] = useState("");
+  const [requestError, setRequestError] = useState<string | null>(null);
 
   const data = useApi<RfqQuotationsResponse>(
     Number.isInteger(rfqId) ? `/rfqs/${rfqId}/quotations` : null,
     { sort },
   );
+
+  const requestApproval = useApiMutation(
+    (input: { quotationId: number; remarks: string }) => api.post<{ approval: { id: number } }>("/approvals", input),
+    { invalidate: ["/approvals", "/rfqs", "/purchase-orders"] },
+  );
+
+  async function submitApprovalRequest() {
+    if (!requestFor) return;
+    setRequestError(null);
+    try {
+      const result = await requestApproval.mutateAsync({
+        quotationId: requestFor.id,
+        remarks: requestRemarks,
+      });
+      toast.success("Approval requested", "A manager can now review this quotation. Its terms are locked.");
+      setRequestFor(null);
+      setRequestRemarks("");
+      data.refetch();
+      navigate(`/approvals/${result.approval.id}`);
+    } catch (error) {
+      setRequestError(errorMessage(error));
+    }
+  }
 
   if (data.loading) {
     return (
@@ -82,7 +117,7 @@ export default function RfqQuotations() {
           <div className="card p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Quotations received</p>
             <p className="mt-1.5 text-[20px] font-extrabold text-ink">{quotations.length}</p>
-            <p className="mt-0.5 text-[11px] text-muted">Current submissions and superseded revisions retained for audit.</p>
+            <p className="mt-0.5 text-[11px] text-muted">One quotation per vendor.</p>
           </div>
           <div className="card p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Still awaiting</p>
@@ -139,6 +174,7 @@ export default function RfqQuotations() {
                     <th className="hidden sm:table-cell">Submitted</th>
                     <th className="hidden md:table-cell">Delivery</th>
                     <th className="hidden lg:table-cell">Revision</th>
+                    <th>Approval</th>
                     <th className="text-right">Quoted total</th>
                     <th className="text-right">Details</th>
                   </tr>
@@ -162,9 +198,37 @@ export default function RfqQuotations() {
                         {quotation.deliveryDays === 0 ? "Immediate" : `${quotation.deliveryDays} day(s)`}
                       </td>
                       <td className="hidden lg:table-cell">
-                        <span className={`badge ${quotation.status === "superseded" ? "badge-inactive" : "badge-submitted"}`}>
-                          rev {quotation.revision}{quotation.status === "superseded" ? " · superseded" : " · current"}
-                        </span>
+                        <span className="badge badge-submitted">rev {quotation.revision}</span>
+                      </td>
+                      <td>
+                        {quotation.approval ? (
+                          <Link to={`/approvals/${quotation.approval.id}`} className="inline-flex">
+                            <Badge
+                              status={
+                                quotation.approval.status === "pending"
+                                  ? "Pending"
+                                  : quotation.approval.status === "approved"
+                                    ? "Approved"
+                                    : "Rejected"
+                              }
+                            />
+                          </Link>
+                        ) : canRequestApproval ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<ShieldCheck size={13} />}
+                            onClick={() => {
+                              setRequestError(null);
+                              setRequestRemarks("");
+                              setRequestFor(quotation);
+                            }}
+                          >
+                            Request
+                          </Button>
+                        ) : (
+                          <span className="text-[11px] text-muted">—</span>
+                        )}
                       </td>
                       <td className="text-right text-[12px] font-bold text-ink">
                         {formatMoney(quotation.total, quotation.currency)}
@@ -280,6 +344,57 @@ export default function RfqQuotations() {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(requestFor)}
+        onClose={() => setRequestFor(null)}
+        title="Request approval for this quotation?"
+        description={
+          requestFor
+            ? `${requestFor.vendorName} · ${formatMoney(requestFor.total, requestFor.currency)} · revision ${requestFor.revision}`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setRequestFor(null)} disabled={requestApproval.isPending}>
+              Cancel
+            </Button>
+            <Button size="sm" loading={requestApproval.isPending} onClick={submitApprovalRequest}>
+              Send for approval
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-[11px] leading-relaxed text-amber-800">
+            <ShieldCheck size={14} className="mt-0.5 shrink-0" />
+            <p>
+              The quotation terms are frozen when the request is created: the vendor can no longer revise this
+              quotation, and the approval snapshot is what a purchase order will be generated from.
+            </p>
+          </div>
+
+          <Field
+            label="Note for the approver (optional)"
+            htmlFor="approval-request-remarks"
+            hint="Recorded on the approval timeline."
+          >
+            <Textarea
+              id="approval-request-remarks"
+              value={requestRemarks}
+              onChange={(event) => setRequestRemarks(event.target.value)}
+              maxLength={1000}
+              placeholder="e.g. Lowest comparable total and the shortest delivery window."
+            />
+          </Field>
+
+          {requestError ? (
+            <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
+              {requestError}
+            </p>
+          ) : null}
+        </div>
       </Modal>
     </Page>
   );

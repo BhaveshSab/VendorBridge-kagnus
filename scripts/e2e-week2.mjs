@@ -256,6 +256,22 @@ try {
     `${identity[0].db}:${identity[0].port}`,
   );
 
+  // Snapshot the register before the run creates anything. Cleanup compares
+  // against this instead of hard-coded totals, so the suite is honest on a
+  // freshly seeded database and on one that already holds demo fixtures.
+  const [usersBefore, vendorsBefore, quotationsBefore, liveQuotationsBefore] = await Promise.all([
+    prisma.user.count(),
+    prisma.vendor.count(),
+    prisma.quotation.count(),
+    prisma.quotation.count({ where: { supersededAt: null } }),
+  ]);
+  const baseline = {
+    users: usersBefore,
+    vendors: vendorsBefore,
+    quotations: quotationsBefore,
+    liveQuotations: liveQuotationsBefore,
+  };
+
   const anon = httpClient();
   const procurement = await signIn(accounts.procurement);
   const nova = await signIn(accounts.nova);
@@ -717,9 +733,14 @@ try {
   await page.goto(`${BASE}/rfqs`, { waitUntil: "networkidle0", timeout: 45000 });
   await settle(page);
   const listText = await textOf(page);
+  // The register is paginated and may already hold earlier demo records, so the
+  // list check proves it renders with live status counts; the search check below
+  // proves this run's RFQ is in it, with its reference, status and single row.
+  const listRows = await page.$$("table tbody tr");
   check(
-    "RFQ list shows the created RFQs and live status counts",
-    listText.includes(rfqA.reference) && /open now/i.test(listText),
+    "RFQ list renders with live status counts",
+    listRows.length > 0 && /All/i.test(listText) && /Open/i.test(listText),
+    `${listRows.length} row(s)`,
   );
   await page.click('input[placeholder*="Search reference"]', { clickCount: 3 });
   await page.type('input[placeholder*="Search reference"]', TITLE);
@@ -729,7 +750,7 @@ try {
   const rows = await page.$$eval("table tbody tr", (items) => items.length);
   check(
     "search narrows the procurement list to the test RFQ",
-    searchText.includes(rfqA.reference) && rows === 1,
+    searchText.includes(rfqA.reference) && rows === 1 && /open now/i.test(searchText),
     `${rows} row(s)`,
   );
   await shot(page, "13-rfq-list-search.png");
@@ -758,9 +779,6 @@ try {
   // =========================================================================
   section("F. Authorization and negative API checks");
   // =========================================================================
-  const quoteCountBefore = await prisma.quotation.count({ where: { rfqId: rfqA.id } });
-  const totalBefore = (await prisma.quotation.findFirst({ where: { rfqId: rfqA.id, vendorId: novaVendor.id } })).total.toFixed(2);
-
   check(
     "anonymous users get 401 on RFQ and quotation data",
     (await anon("GET", "/rfqs")).status === 401 &&
@@ -877,6 +895,20 @@ try {
       ` (rows ${rfqCountBeforeValidation}->${rfqCountAfterValidation})`,
   );
 
+  // Captured with the valid revision already saved: everything below is a
+  // payload the API must reject, and none of them may add, remove or rewrite a
+  // row — append-only history included.
+  const quoteRowsBefore = await prisma.quotation.count({ where: { rfqId: rfqA.id } });
+  const liveQuoteCountBefore = await prisma.quotation.count({
+    where: { rfqId: rfqA.id, vendorId: novaVendor.id, supersededAt: null },
+  });
+  const totalBefore = (
+    await prisma.quotation.findFirst({
+      where: { rfqId: rfqA.id, vendorId: novaVendor.id, supersededAt: null },
+      select: { total: true },
+    })
+  ).total.toFixed(2);
+
   const missingPrice = await nova("PUT", `/rfqs/${rfqA.id}/quotation`, {
     deliveryDays: 4,
     items: [{ rfqItemId: items[0].id, unitPrice: "100" }],
@@ -913,16 +945,41 @@ try {
     [missingPrice, negativePrice, malformedPrice, foreignItem, badTax].map((r) => r.status).join(","),
   );
 
-  const quoteCountAfter = await prisma.quotation.count({ where: { rfqId: rfqA.id } });
-  const totalAfter = (await prisma.quotation.findFirst({ where: { rfqId: rfqA.id, vendorId: novaVendor.id } })).total.toFixed(2);
+  const quoteRowsAfter = await prisma.quotation.count({ where: { rfqId: rfqA.id } });
+  const liveQuoteCountAfter = await prisma.quotation.count({
+    where: { rfqId: rfqA.id, vendorId: novaVendor.id, supersededAt: null },
+  });
+  const totalAfter = (
+    await prisma.quotation.findFirst({
+      where: { rfqId: rfqA.id, vendorId: novaVendor.id, supersededAt: null },
+      select: { total: true },
+    })
+  ).total.toFixed(2);
   check(
     "rejected submissions did not mutate the database",
-    quoteCountBefore === quoteCountAfter && totalBefore !== totalAfter && totalAfter === "18356.00",
-    `count ${quoteCountBefore}->${quoteCountAfter}, Nova total ${totalBefore}->${totalAfter} (only the valid revision changed it)`,
+    quoteRowsBefore === quoteRowsAfter &&
+      liveQuoteCountBefore === liveQuoteCountAfter &&
+      totalBefore === totalAfter &&
+      totalAfter === "18356.00",
+    `rows ${quoteRowsBefore}->${quoteRowsAfter}, live bids for Nova ${liveQuoteCountBefore}->${liveQuoteCountAfter}, ` +
+      `Nova total ${totalBefore}->${totalAfter}`,
   );
   check(
-    "one quotation row per vendor despite revisions",
-    (await prisma.quotation.count({ where: { rfqId: rfqA.id, vendorId: novaVendor.id } })) === 1,
+    "one live quotation per vendor despite append-only revisions",
+    (await prisma.quotation.count({ where: { rfqId: rfqA.id, vendorId: novaVendor.id, supersededAt: null } })) === 1,
+  );
+  const novaRevisions = await prisma.quotation.findMany({
+    where: { rfqId: rfqA.id, vendorId: novaVendor.id },
+    include: { items: true },
+    orderBy: { revision: "asc" },
+  });
+  check(
+    "superseded revisions keep their line items (append-only audit trail)",
+    novaRevisions.length === 2 &&
+      novaRevisions[0].supersededAt !== null &&
+      novaRevisions[0].items.length > 0 &&
+      novaRevisions[1].supersededAt === null,
+    novaRevisions.map((row) => `rev ${row.revision} items ${row.items.length} superseded ${row.supersededAt !== null}`).join("; "),
   );
 
   check(
@@ -1034,8 +1091,17 @@ try {
       quotations: { include: { items: true } },
     },
   });
-  const dbNova = dbRfq.quotations.find((quotation) => quotation.vendorId === novaVendor.id);
-  const dbZenith = dbRfq.quotations.find((quotation) => quotation.vendorId === zenithVendor.id);
+  // Append-only: a revision leaves the superseded bid in the table, so select
+  // the live row per vendor rather than assuming one row per vendor.
+  const dbNova = dbRfq.quotations.find(
+    (quotation) => quotation.vendorId === novaVendor.id && quotation.supersededAt === null,
+  );
+  const dbZenith = dbRfq.quotations.find(
+    (quotation) => quotation.vendorId === zenithVendor.id && quotation.supersededAt === null,
+  );
+  const dbNovaSuperseded = dbRfq.quotations.filter(
+    (quotation) => quotation.vendorId === novaVendor.id && quotation.supersededAt !== null,
+  );
   check(
     "database holds the RFQ with its unique reference and 2 items",
     dbRfq.reference === rfqA.reference &&
@@ -1050,12 +1116,21 @@ try {
       dbRfq.assignments.every((row) => [novaVendor.id, zenithVendor.id].includes(row.vendorId)),
   );
   check(
-    "two quotation rows link to the correct RFQ and vendors",
-    dbRfq.quotations.length === 2 &&
+    "live quotation rows link to the correct RFQ and vendors",
+    Boolean(dbNova) &&
+      Boolean(dbZenith) &&
       dbNova.rfqId === rfqA.id &&
       dbZenith.rfqId === rfqA.id &&
       dbNova.vendorId === novaVendor.id &&
       dbZenith.vendorId === zenithVendor.id,
+  );
+  check(
+    "the superseded Nova revision is retained for audit",
+    dbNovaSuperseded.length === 1 &&
+      dbNovaSuperseded[0].revision === 1 &&
+      dbNovaSuperseded[0].items.length === 2 &&
+      dbNovaSuperseded[0].rfqId === rfqA.id,
+    `superseded revisions for Nova: ${dbNovaSuperseded.map((q) => `rev ${q.revision} items ${q.items.length}`).join(", ")}`,
   );
   check(
     "stored prices, totals, notes and delivery data match the submissions",
@@ -1094,8 +1169,11 @@ try {
     `orphans ${orphanRows[0].count}, duplicates ${duplicateRows[0].count}`,
   );
   check(
-    "revision count advanced without duplicating the quotation",
-    dbNova.revision === 2 && dbRfq.quotations.length === 2,
+    "revision advanced in place: one live row plus one superseded row per vendor",
+    dbNova.revision === 2 &&
+      dbRfq.quotations.length === 3 &&
+      dbRfq.quotations.filter((q) => q.supersededAt === null).length === 2,
+    `total rows ${dbRfq.quotations.length}, live ${dbRfq.quotations.filter((q) => q.supersededAt === null).length}`,
   );
 
   check(
@@ -1110,20 +1188,33 @@ try {
   // =========================================================================
   const removed = await prisma.rfq.deleteMany({ where: { title: { startsWith: PREFIX, contains: stamp } } });
   const remaining = await prisma.rfq.count({ where: { title: { startsWith: PREFIX, contains: stamp } } });
-  const [users, vendorsLeft, quotationsLeft] = await Promise.all([
+  const [users, vendorsLeft, quotationsLeft, liveLeft] = await Promise.all([
     prisma.user.count(),
     prisma.vendor.count(),
     prisma.quotation.count(),
+    prisma.quotation.count({ where: { supersededAt: null } }),
   ]);
+  // Append-only allows a delete only through the RFQ cascade (an RFQ that no
+  // longer exists cannot be the subject of a live bid). Deleting this run's
+  // RFQs must therefore take their whole quotation history with them and leave
+  // the register exactly as it was before the run.
+  const surviving = await prisma.quotation.findMany({
+    where: { id: { in: created.quotationIds } },
+    select: { id: true, supersededAt: true },
+  });
   check(
-    "test RFQs (and cascaded children) were removed",
-    remaining === 0 && quotationsLeft === 0,
-    `${removed.count} RFQ(s) removed`,
+    "test RFQs and their quotation history were removed",
+    remaining === 0 && surviving.length === 0,
+    `${removed.count} RFQ(s) removed, surviving quotation rows ${surviving.length}/${created.quotationIds.length}`,
   );
   check(
-    "seeded users and vendors are untouched",
-    users === 6 && vendorsLeft === 16,
-    `users ${users}, vendors ${vendorsLeft}`,
+    "the run left the register exactly as it found it",
+    users === baseline.users &&
+      vendorsLeft === baseline.vendors &&
+      quotationsLeft === baseline.quotations &&
+      liveLeft === baseline.liveQuotations,
+    `users ${baseline.users}->${users}, vendors ${baseline.vendors}->${vendorsLeft}, ` +
+      `quotations ${baseline.quotations}->${quotationsLeft}, live ${baseline.liveQuotations}->${liveLeft}`,
   );
 
   const passed = results.filter((result) => result.status === "PASS").length;
