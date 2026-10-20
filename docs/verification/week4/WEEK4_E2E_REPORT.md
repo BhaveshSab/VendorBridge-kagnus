@@ -1,8 +1,9 @@
 # Week 4 QA run — notifications, audit, reports and integration
 
-Run: 2026-10-20T21:33:56.581Z against http://localhost:4000 (127.0.0.1/vendorbridge_wk4_e2e)
+Run: 2026-10-20T21:41:13.498Z against http://localhost:4000 (127.0.0.1/vendorbridge_wk4_e2e)
 Totals: **69 passed, 0 failed, 11 not implemented** of 80 checks.
 Baseline API suite: **227 passed, 0 failed**.
+Closing regression suite after the Week 4 run: **227 passed, 0 failed**.
 
 ## Expected output verdicts
 
@@ -35,6 +36,8 @@ Baseline API suite: **227 passed, 0 failed**.
 - Vendors are refused the audit trail entirely (403) rather than receiving a scoped subset (A-19).
 - No process restart was performed in this run; persistence was verified by re-reading through a fresh session and by recomputing from PostgreSQL (R-23).
 - No deployed application URL exists in this workspace, so the submission item 'working deployed application URL' is unverified.
-- The reviewed prompt names a 190-check baseline; this repository's suite currently has 227 checks (227/227 green).
+- The reviewed prompt names a 190-check baseline; this repository's suite currently has 227 checks (227/227 green at both the opening and closing runs).
+- The Week 2 (76-check) and Week 3 (106-check) browser suites were not re-run in this session; their last recorded results remain in docs/verification/week2 and docs/verification/week3.
+- This harness exits non-zero when any expected outcome is FAIL — NOT IMPLEMENTED, so the current run deliberately fails the build until the notification subsystem exists.
 
 Machine-readable results: `docs/verification/week4-e2e-results.json`. CSV exports and the append-only trigger errors are in `docs/verification/week4/`.

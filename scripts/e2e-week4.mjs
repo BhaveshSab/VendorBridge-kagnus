@@ -1026,6 +1026,8 @@ async function writeReport(startedAt) {
   const missing = results.filter((row) => row.outcome === "FAIL — NOT IMPLEMENTED").length;
   const baselineRaw = await readFile(path.join(OUT, "baseline-smoke.txt"), "utf8").catch(() => "");
   const baseline = baselineRaw.match(/(\d+) passed, (\d+) failed/);
+  const closingRaw = await readFile(path.join(OUT, "closing-smoke.txt"), "utf8").catch(() => "");
+  const closing = closingRaw.match(/(\d+) passed, (\d+) failed/);
 
   const report = {
     runAt: new Date().toISOString(),
@@ -1034,6 +1036,7 @@ async function writeReport(startedAt) {
     database: parsedDb ? `${parsedDb.hostname}${parsedDb.pathname}` : "unknown",
     browser: BROWSER_PATH,
     baseline: baseline ? { command: "node scripts/smoke-test.mjs", passed: Number(baseline[1]), failed: Number(baseline[2]) } : null,
+    closingBaseline: closing ? { command: "node scripts/smoke-test.mjs", passed: Number(closing[1]), failed: Number(closing[2]) } : null,
     totals: { passed, failed, notImplemented: missing, total: results.length },
     screenshots: screenshots.map((file) => `docs/screenshots/week4/${file}`),
     results,
@@ -1063,7 +1066,9 @@ async function writeReport(startedAt) {
       "Vendors are refused the audit trail entirely (403) rather than receiving a scoped subset (A-19).",
       "No process restart was performed in this run; persistence was verified by re-reading through a fresh session and by recomputing from PostgreSQL (R-23).",
       "No deployed application URL exists in this workspace, so the submission item 'working deployed application URL' is unverified.",
-      "The reviewed prompt names a 190-check baseline; this repository's suite currently has 227 checks (227/227 green).",
+      "The reviewed prompt names a 190-check baseline; this repository's suite currently has 227 checks (227/227 green at both the opening and closing runs).",
+      "The Week 2 (76-check) and Week 3 (106-check) browser suites were not re-run in this session; their last recorded results remain in docs/verification/week2 and docs/verification/week3.",
+      "This harness exits non-zero when any expected outcome is FAIL — NOT IMPLEMENTED, so the current run deliberately fails the build until the notification subsystem exists.",
     ],
   };
 
@@ -1074,6 +1079,7 @@ async function writeReport(startedAt) {
     `Run: ${report.runAt} against ${BASE} (${report.database})`,
     `Totals: **${passed} passed, ${failed} failed, ${missing} not implemented** of ${results.length} checks.`,
     baseline ? `Baseline API suite: **${baseline[1]} passed, ${baseline[2]} failed**.` : "Baseline API suite: not recorded.",
+    closing ? `Closing regression suite after the Week 4 run: **${closing[1]} passed, ${closing[2]} failed**.` : "Closing regression suite: not recorded.",
     "",
     "## Expected output verdicts",
     "",
@@ -1116,5 +1122,6 @@ try {
   if (browser) await browser.close();
   const totals = await writeReport(startedAt);
   await prisma.$disconnect();
-  if (fatal || totals.failed > 0) process.exitCode = 1;
+  // A missing deliverable is a failed outcome, not a neutral skip.
+  if (fatal || totals.failed > 0 || totals.missing > 0) process.exitCode = 1;
 }
