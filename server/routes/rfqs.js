@@ -888,6 +888,7 @@ router.get("/:id", async (req, res) => {
     const quotation = await prisma.quotation.findFirst({
       where: { rfqId: id, vendorId: vendor.id, ...ACTIVE_QUOTATION },
       include: quotationInclude,
+      orderBy: { revision: "desc" },
     });
     const approval = quotation
       ? await prisma.approvalRequest.findFirst({
@@ -922,7 +923,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Vendor submission (create or revise — one quotation per vendor per RFQ)
+// Vendor submission: every edit creates a new immutable quotation revision.
 // ---------------------------------------------------------------------------
 
 router.put("/:id/quotation", requireRole("vendor"), async (req, res) => {
@@ -1064,9 +1065,30 @@ router.put("/:id/quotation", requireRole("vendor"), async (req, res) => {
         throw error;
       });
 
-  let result;
-  try {
-    result = await write();
+      const revision = (previous?.revision ?? 0) + 1;
+      const quotation = await tx.quotation.create({
+        data: {
+          rfqId: id,
+          vendorId: vendor.id,
+          currency: rfq.currency,
+          deliveryDays: data.deliveryDays,
+          deliveryTerms: data.deliveryTerms || null,
+          notes: data.notes || null,
+          taxPercent: roundMoney(data.taxPercent),
+          subtotal: totals.subtotal,
+          taxAmount: totals.taxAmount,
+          shippingAmount: totals.shippingAmount,
+          total: totals.total,
+          revision,
+          supersedesId: previous?.id ?? null,
+          submittedAt: timestamp,
+          updatedAt: timestamp,
+          items: { create: lines },
+        },
+        include: quotationInclude,
+      });
+      return { created: !previous, quotation };
+    }, { timeout: 20000 });
   } catch (error) {
     // Two simultaneous submissions can race on the active-bid index; the second
     // attempt takes the revision path once the first has committed.

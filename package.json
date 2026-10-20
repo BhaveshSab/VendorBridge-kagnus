@@ -14,6 +14,7 @@
     "build": "tsc -b && vite build",
     "start": "node server/index.js",
     "seed": "node server/seed.js",
+    "seed:rfq-demo": "node scripts/seed-rfq-comparison-demo.mjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",

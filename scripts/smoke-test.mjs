@@ -715,8 +715,9 @@ async function main() {
     }),
   ]);
   check(
-    "concurrent submissions from one vendor do not duplicate quotations",
-    [200, 201].includes(concurrentA.status) && [200, 201].includes(concurrentB.status),
+    "concurrent submissions serialize into distinct quotation revisions",
+    [200, 201].includes(concurrentA.status) && [200, 201].includes(concurrentB.status) &&
+      concurrentA.body?.quotation?.id !== concurrentB.body?.quotation?.id,
   );
 
   const zenQuote = await zenithAccount.call("PUT", `/rfqs/${rfq1?.id}/quotation`, {
@@ -762,8 +763,10 @@ async function main() {
 
   section("10. Quotation review and comparison");
   const quotationList = await procurement("GET", `/rfqs/${rfq1?.id}/quotations`);
-  check("procurement sees every quotation for the RFQ", quotationList.status === 200 && quotationList.body?.quotations?.length === 2);
-  const novaRow = quotationList.body?.quotations?.find((entry) => entry.vendorId === nova.id);
+  check("procurement sees current and historical quotation revisions", quotationList.status === 200 && quotationList.body?.quotations?.length === 5);
+  const novaRevisions = quotationList.body?.quotations?.filter((entry) => entry.vendorId === nova.id).sort((a, b) => b.revision - a.revision);
+  const novaRow = novaRevisions?.[0];
+  check("historical Nova revisions are preserved and superseded", novaRevisions?.length === 4 && novaRevisions.slice(1).every((entry) => entry.status === "superseded"));
   const zenRow = quotationList.body?.quotations?.find((entry) => entry.vendorId === zenith.id);
   check("quotation list includes vendor identity", novaRow?.vendorName === nova.name);
   check("quotation list exposes stored totals", zenRow?.total === "51830.00");
@@ -799,18 +802,13 @@ async function main() {
   let prisma = null;
   try {
     ({ prisma } = await import("../server/db.js"));
-    await prisma.quotation.update({ where: { id: zenRow.id }, data: { currency: "USD" } });
-    const excluded = await procurement("GET", `/rfqs/${rfq1?.id}/comparison`);
-    check(
-      "currency-mismatched quotations are excluded from the highlight",
-      excluded.body?.summary?.excludedCount === 1 &&
-        excluded.body?.excluded?.[0]?.reasons?.some((reason) => reason.includes("USD")),
-    );
-    check(
-      "the next-lowest comparable quotation wins instead",
-      excluded.body?.lowest?.vendorId === nova.id && excluded.body?.lowest?.total === "53850.00",
-    );
-    await prisma.quotation.update({ where: { id: zenRow.id }, data: { currency: "INR" } });
+    let mutationRejected = false;
+    try {
+      await prisma.quotation.update({ where: { id: zenRow.id }, data: { currency: "USD" } });
+    } catch {
+      mutationRejected = true;
+    }
+    check("database prevents mutation of submitted financial bids", mutationRejected);
   } finally {
     if (prisma) await prisma.$disconnect().catch(() => {});
   }

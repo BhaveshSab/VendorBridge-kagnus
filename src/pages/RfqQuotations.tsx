@@ -117,7 +117,7 @@ export default function RfqQuotations() {
           <div className="card p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Quotations received</p>
             <p className="mt-1.5 text-[20px] font-extrabold text-ink">{quotations.length}</p>
-            <p className="mt-0.5 text-[11px] text-muted">One quotation per vendor.</p>
+            <p className="mt-0.5 text-[11px] text-muted">Current submissions and superseded revisions retained for audit.</p>
           </div>
           <div className="card p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted">Still awaiting</p>
@@ -198,7 +198,9 @@ export default function RfqQuotations() {
                         {quotation.deliveryDays === 0 ? "Immediate" : `${quotation.deliveryDays} day(s)`}
                       </td>
                       <td className="hidden lg:table-cell">
-                        <span className="badge badge-submitted">rev {quotation.revision}</span>
+                        <span className={`badge ${quotation.status === "superseded" ? "badge-inactive" : "badge-submitted"}`}>
+                          rev {quotation.revision}{quotation.status === "superseded" ? " · superseded" : " · current"}
+                        </span>
                       </td>
                       <td>
                         {quotation.approval ? (
