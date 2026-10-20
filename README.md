@@ -380,6 +380,27 @@ only into a development database with no users or vendors. It never overwrites e
 A destructive reseed is blocked unless `ALLOW_DESTRUCTIVE_SEED=true` is explicitly set, and is
 never permitted when `NODE_ENV=production`.
 
+### When a deploy fails on a migration
+
+`vercel.json` runs `node scripts/migrate-deploy.mjs`, which wraps `prisma migrate deploy`, retries
+once on a transient connection error and names the blocking migration when it gives up. Two codes
+stop a build, and both are fixed **once, against that database**, not in the code:
+
+| Code | Meaning | Fix |
+| --- | --- | --- |
+| `P3018` | The migration's SQL failed — most often `column "…" already exists` because the schema was changed outside Prisma (`db push`, a manual SQL run) | `npx prisma migrate resolve --rolled-back "<migration_name>"`, then redeploy |
+| `P3009` | An earlier migration is still recorded as failed, so Prisma refuses to apply anything else | resolve that migration first; its name is in the error and the wrapper prints the command |
+
+Use `--rolled-back` when the migration did not (fully) apply and must run again, and `--applied`
+when the database already contains those objects. Both only edit Prisma's `_prisma_migrations`
+bookkeeping rows — no table data is touched. Confirm with `npx prisma migrate status` (it must say
+*Database schema is up to date*), then redeploy.
+
+Do not restore a deleted migration folder through a merge: Prisma applies every folder in
+`prisma/migrations/`, and a resurrected migration is either applied twice or fails against a
+database that already has its objects. `scripts/migrate-deploy.mjs` prints a warning when two
+folders share a timestamp, which is how such a resurrection shows up.
+
 ---
 
 ## 7. Testing
@@ -534,7 +555,11 @@ and short motion that respects `prefers-reduced-motion`.
   1440×900) covers the RFQ workflow end to end; Week 1 flows still rely on the 179-check API suite
   plus a manual walkthrough. The E2E harness only accepts a loopback database whose name contains
   `e2e` — run it against staging by mistake and it will refuse rather than write there.
-- **Deployment**: no hosted URL; run locally with `npm run dev` or `npm start`.
+- **Deployment**: Vercel hosts the Vite build plus `api/index.js` (Express as one serverless
+  function, `maxDuration` 30s) and Neon hosts PostgreSQL; migrations run during the build via
+  `npm run db:deploy`. The serverless function is stateless, so rate limits use Redis when
+  `REDIS_URL` is set and the `rate_limits` table otherwise. Run locally with `npm run dev` or
+  `npm start`.
 - **Bundle size**: route-level code splitting (`React.lazy` + `<Suspense>`) builds one chunk per
   page, so users only download the code for the route they visit.
 

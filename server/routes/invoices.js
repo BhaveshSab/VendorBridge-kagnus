@@ -303,7 +303,7 @@ router.post("/", requireRole(...GENERATE_ROLES), async (req, res) => {
 
         return { invoiceId: invoice.id, created: true };
       },
-      { timeout: 20000 },
+      { maxWait: 10000, timeout: 20000 },
     );
 
     if (result.created) await invalidateCache("dashboard");

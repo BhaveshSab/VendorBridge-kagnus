@@ -169,7 +169,6 @@ model Quotation {
   // migration — Prisma cannot express a partial index, but superseded revisions
   // still have to coexist under the same (rfq, vendor) pair.
   @@unique([rfqId, vendorId, revision])
-  @@index([rfqId, vendorId])
   @@index([rfqId])
   @@index([vendorId])
   @@map("quotations")

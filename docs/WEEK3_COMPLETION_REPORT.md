@@ -150,6 +150,9 @@ Screenshots (synthetic/test data only):
 | --- | --- | --- |
 | `node scripts/e2e-week3.mjs` | disposable embedded PostgreSQL 18 on `127.0.0.1:55432/vendorbridge_e2e` and a real browser (Brave 1440×900) | **106 passed, 0 failed** (`docs/verification/week3/results.json`), 8 screenshots refreshed, test RFQs cleaned up (5/5) |
 | `npm run test:api` (Week 1/2 suite) | the same code against the disposable DB and the dev database | 189 passed, 0 failed (both) |
+| `npm run test:api` after the deployment repair | Neon dev database | **190 passed, 0 failed** |
+| `node scripts/migrate-deploy.mjs` | fresh embedded PostgreSQL 18 + Neon | 6/6 migrations apply to an empty database; a second run reports *up to date*; a simulated `P3009` prints the blocking migration and the exact `migrate resolve` command, then exits 1 |
+| `npx prisma migrate diff` (database vs `schema.prisma`) | fresh migrated database | no drift |
 | `node .tmp/week3-neon.mjs` (live flow) | dev database via `http://localhost:4100` | **34 passed, 0 failed** — approval → `PO-0001` → `INV-0001` → PDF → email → vendor isolation → integrity |
 | `node .tmp/email-failure.mjs` | disposable DB with an intentionally invalid provider key, then the dev outbox | **14 passed, 0 failed** — `502 email_failed`, `failed` persisted, safe error stored, retry sends, one invoice |
 | `npm run typecheck` | repo | pass |
@@ -179,7 +182,7 @@ invoices).
 ## 8. Migrations and configuration
 
 ```bash
-npx prisma migrate deploy     # applies add_approval_po_invoices + reconcile_quotation_mutability
+npm run db:deploy             # scripts/migrate-deploy.mjs → prisma migrate deploy
 npm run seed                  # Week 1 users/vendors (only when the tables are empty)
 npm run db:seed-demo          # Week 1/2 demo RFQs and comparison quotations (idempotent)
 ```
@@ -193,6 +196,27 @@ New/changed environment variables (documented in `.env.example`):
 | `EMAIL_DEV_OUTBOX=true` | local-only opt-in to the file outbox; never active in production |
 
 No credentials are stored in the repository; `.env` is gitignored.
+
+### Deployment (Vercel + Neon)
+
+`vercel.json` runs `npx prisma generate && node scripts/migrate-deploy.mjs && npm run build`; the
+Vite bundle is served statically and `api/index.js` re-exports the Express app as one serverless
+function. Migrations therefore run against Neon on every build, and a build stops when one needs a
+human decision. Both blocking codes are fixed once per database, not in code:
+
+| Code | Cause | Fix |
+| --- | --- | --- |
+| `P3018` | the migration's SQL failed — e.g. `column "superseded_at" already exists` because the schema had been changed outside Prisma | `npx prisma migrate resolve --rolled-back "<migration>"`, redeploy |
+| `P3009` | an earlier migration is still recorded as failed, so Prisma applies nothing new | same, for the named migration (`--applied` when the objects already exist) |
+
+The first Vercel build failed exactly this way: a merge from `main` restored the obsolete
+`20261020120000_append_only_quotation_revisions` folder that the feature branch had already
+superseded with `20261020150000_…`, and Neon already carried `superseded_at`. That folder is deleted
+again, the failed row was resolved, and `scripts/migrate-deploy.mjs` now warns when two migration
+folders share a timestamp (the signature of such a resurrection) and prints the resolve command for
+`P3009`/`P3018` instead of leaving the build log with a bare exit code. The same merge had also
+pasted the abandoned pre-`superseded_at` handler into `server/routes/rfqs.js`; those files are back
+to the verified branch implementation.
 
 ## 9. Known limitations / not verified
 

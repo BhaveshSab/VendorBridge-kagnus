@@ -110,9 +110,6 @@ export interface Quotation {
   shippingAmount: string;
   total: string;
   revision: number;
-  status: "submitted" | "superseded";
-  supersedesId: number | null;
-  supersededAt: string | null;
   submittedAt: string;
   updatedAt: string;
   items: QuotationLine[];

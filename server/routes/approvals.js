@@ -288,7 +288,7 @@ router.post("/", requireRole(...REQUEST_ROLES), async (req, res) => {
       });
       return approval;
     },
-    { timeout: 20000 },
+    { maxWait: 10000, timeout: 20000 },
   ).catch((error) => {
     if (isUniqueViolation(error)) {
       throw new ApiError(409, "Another approval request was created for this RFQ at the same time.", {
@@ -371,7 +371,7 @@ async function decide(req, res, decision) {
 
       return tx.approvalRequest.findUnique({ where: { id }, include: detailInclude });
     },
-    { timeout: 20000 },
+    { maxWait: 10000, timeout: 20000 },
   );
 
   await invalidateCache("dashboard");

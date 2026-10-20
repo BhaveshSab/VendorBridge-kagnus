@@ -27,6 +27,13 @@ function isDatabaseUnavailable(error) {
   );
 }
 
+// P2028: an interactive transaction could not acquire a connection before the
+// maxWait deadline. On a pooled managed database (Neon) this is contention, not
+// a broken schema, so it is reported as retryable instead of a 500.
+function isDatabaseBusy(error) {
+  return error?.code === "P2028";
+}
+
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
@@ -111,6 +118,14 @@ export function apiErrorHandler(error, req, res, _next) {
   if (error instanceof ApiError) {
     res.status(error.status).json({
       error: { message: error.message, code: error.code, fields: error.fields || undefined },
+    });
+    return;
+  }
+  if (isDatabaseBusy(error)) {
+    console.error(`[db] ${error.code}: transaction could not start in time`);
+    res.setHeader("Retry-After", "2");
+    res.status(503).json({
+      error: { message: "The database is busy right now. Please try again.", code: "database_busy" },
     });
     return;
   }

@@ -179,7 +179,7 @@ export async function seed({ force = false } = {}) {
         update: { value: vendors.length + 1 },
       });
     },
-    { timeout: 30000 },
+    { maxWait: 10000, timeout: 30000 },
   );
 
   return true;

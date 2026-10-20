@@ -254,7 +254,7 @@ router.post("/", requireRole(...GENERATE_ROLES), async (req, res) => {
 
         return { purchaseOrder, created: true };
       },
-      { timeout: 20000 },
+      { maxWait: 10000, timeout: 20000 },
     );
 
     // The dashboard's issued-PO value moves only when a document is created.

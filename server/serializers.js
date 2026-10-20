@@ -126,9 +126,6 @@ export function quotationOut(quotation, { includeVendor = true, revealNotes = tr
     shippingAmount: quotation.shippingAmount.toFixed(2),
     total: quotation.total.toFixed(2),
     revision: quotation.revision,
-    status: quotation.status ?? "submitted",
-    supersedesId: quotation.supersedesId ?? null,
-    supersededAt: ISO(quotation.supersededAt ?? null),
     submittedAt: ISO(quotation.submittedAt),
     updatedAt: ISO(quotation.updatedAt),
     items: (quotation.items ?? []).map((line) => ({
