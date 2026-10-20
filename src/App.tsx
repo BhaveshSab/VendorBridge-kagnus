@@ -18,6 +18,12 @@ const RfqDetail = lazy(() => import("./pages/RfqDetail"));
 const RfqQuotation = lazy(() => import("./pages/RfqQuotation"));
 const RfqQuotations = lazy(() => import("./pages/RfqQuotations"));
 const RfqComparison = lazy(() => import("./pages/RfqComparison"));
+const Approvals = lazy(() => import("./pages/Approvals"));
+const PurchaseOrders = lazy(() => import("./pages/PurchaseOrders"));
+const PurchaseOrderDetail = lazy(() => import("./pages/PurchaseOrderDetail"));
+const Invoices = lazy(() => import("./pages/Invoices"));
+const InvoiceDetail = lazy(() => import("./pages/InvoiceDetail"));
+const InvoicePrint = lazy(() => import("./pages/InvoicePrint"));
 const Profile = lazy(() => import("./pages/Profile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -54,6 +60,9 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route element={<RequireAuth />}>
+          {/* Print view deliberately sits outside the app shell. */}
+          <Route path="/invoices/:id/print" element={<InvoicePrint />} />
+
           <Route element={<AppLayout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -97,6 +106,54 @@ export default function App() {
               element={
                 <RequireRole roles={["admin", "procurement", "manager"]}>
                   <RfqComparison />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/approvals"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager"]}>
+                  <Approvals />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/approvals/:id"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager"]}>
+                  <Approvals />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/purchase-orders"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager", "vendor"]}>
+                  <PurchaseOrders />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/purchase-orders/:id"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager", "vendor"]}>
+                  <PurchaseOrderDetail />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/invoices"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager", "vendor"]}>
+                  <Invoices />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/invoices/:id"
+              element={
+                <RequireRole roles={["admin", "procurement", "manager", "vendor"]}>
+                  <InvoiceDetail />
                 </RequireRole>
               }
             />

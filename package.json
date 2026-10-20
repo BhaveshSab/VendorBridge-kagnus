@@ -19,6 +19,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:status": "node scripts/db-status.js",
     "db:cleanup-tests": "node scripts/cleanup-test-data.mjs",
+    "db:seed-demo": "node scripts/seed-week12-demo.mjs",
     "db:setup": "npm run db:generate && npm run db:deploy && npm run seed && npm run db:status",
     "db:studio": "prisma studio",
     "test:api": "node scripts/smoke-test.mjs",
@@ -35,6 +36,7 @@
     "express-rate-limit": "^8.7.1",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
+    "pdf-lib": "^1.17.1",
     "rate-limit-redis": "^6.0.1",
     "zod": "^3.24.2"
   },

@@ -380,9 +380,24 @@ async function main() {
   check("session is cleared after logout", (await logoutClient("GET", "/auth/me")).status === 401);
 
   section("6. Module scope guard");
-  for (const path of ["/approvals", "/purchase-orders", "/invoices", "/reports", "/activity"]) {
+  // Week 3 exposes approvals, purchase orders and invoices; later modules stay
+  // unimplemented until their own week lands.
+  for (const path of ["/reports", "/activity"]) {
     check(`${path} is not exposed`, (await procurement("GET", path)).status === 404);
   }
+  for (const path of ["/approvals", "/purchase-orders", "/invoices"]) {
+    check(`anonymous ${path} returns 401`, (await client()("GET", path)).status === 401);
+    check(`week 3 responses for ${path} are no-store`, (await procurement("GET", path)).cacheControl === "no-store");
+  }
+  check("procurement can read the approval queue (200)", (await procurement("GET", "/approvals")).status === 200);
+  check("manager can read the approval queue (200)", (await manager("GET", "/approvals")).status === 200);
+  check("vendor cannot read the approval queue (403)", (await vendor("GET", "/approvals")).status === 403);
+  check("vendor can read only their purchase orders (200)", (await vendor("GET", "/purchase-orders")).status === 200);
+  check("vendor can read only their invoices (200)", (await vendor("GET", "/invoices")).status === 200);
+  check(
+    "vendor cannot request approval (403)",
+    (await vendor("POST", "/approvals", { quotationId: 1 })).status === 403,
+  );
   check("anonymous /rfqs returns 401", (await client()("GET", "/rfqs")).status === 401);
   check("procurement can read /rfqs", (await procurement("GET", "/rfqs")).status === 200);
 
@@ -654,10 +669,29 @@ async function main() {
     ],
   });
   check(
-    "resubmission revises the same quotation (one per vendor)",
+    "resubmission appends a new revision instead of overwriting the bid",
     revisedNova.status === 200 &&
-      revisedNova.body?.quotation?.id === novaQuotation?.id &&
+      revisedNova.body?.quotation?.id !== novaQuotation?.id &&
       revisedNova.body?.quotation?.revision === 2,
+    `old id ${novaQuotation?.id}, new id ${revisedNova.body?.quotation?.id}`,
+  );
+
+  // Compliance: the superseded bid and its line items must survive the revision.
+  const { prisma: revisionDb } = await import("../server/db.js");
+  const revisionRows = await revisionDb.quotation.findMany({
+    where: { rfqId: rfq1.id, vendorId: nova.id },
+    include: { items: true },
+    orderBy: { revision: "asc" },
+  });
+  check(
+    "the superseded bid is kept for audit, never deleted",
+    revisionRows.length === 2 &&
+      revisionRows[0].revision === 1 &&
+      revisionRows[0].supersededAt !== null &&
+      revisionRows[0].items.length === 2 &&
+      revisionRows[1].revision === 2 &&
+      revisionRows[1].supersededAt === null,
+    revisionRows.map((row) => `rev ${row.revision} items ${row.items.length} superseded ${row.supersededAt !== null}`).join("; "),
   );
 
   const [concurrentA, concurrentB] = await Promise.all([
@@ -704,13 +738,15 @@ async function main() {
       "/rfqs",
       rfqBody({
         title: `[smoke] Deadline enforcement ${stamp}`,
-        deadline: new Date(Date.now() + 4000).toISOString(),
+        // Generous window so slow (remote) databases still publish before the deadline.
+        deadline: new Date(Date.now() + 10000).toISOString(),
         vendorIds: [zenith.id],
       }),
     )
   ).body?.rfq;
-  await procurement("POST", `/rfqs/${expiredRfq?.id}/publish`);
-  await sleep(5000);
+  const publishExpiring = await procurement("POST", `/rfqs/${expiredRfq?.id}/publish`);
+  check("expiring RFQ publishes before its deadline", publishExpiring.status === 200, String(publishExpiring.status));
+  await sleep(11000);
   const lateSubmission = await zenithAccount.call("PUT", `/rfqs/${expiredRfq?.id}/quotation`, {
     deliveryDays: 2,
     items: expiredRfq.items.map((item) => ({ rfqItemId: item.id, unitPrice: "90" })),
