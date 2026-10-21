@@ -720,7 +720,7 @@ and short motion that respects `prefers-reduced-motion`.
 | Vendor data persisted in the database | ✅ PostgreSQL via Prisma |
 | Vendor management restricted to authorized roles | ✅ |
 | README with setup, configuration, run instructions | ✅ this file |
-| Screenshots of authentication, dashboard, vendors, documents and notifications | ✅ screens in `docs/screenshots/` covering Weeks 1–4 |
+| Screenshots of authentication, dashboard, vendors, documents and notifications | ✅ complete set in `docs/screenshots/` covering Weeks 1–4 |
 | RFQ → quotation → comparison workflow | ✅ implemented & verified end to end (76-check browser suite, [report](docs/WEEK2_E2E_VERIFICATION.md)) |
 | Week 2 completion report | ✅ [docs/WEEK2_COMPLETION_REPORT.md](docs/WEEK2_COMPLETION_REPORT.md) |
 | Approval → purchase order → invoice workflow | ✅ implemented & verified end to end (106-check browser suite, [report](docs/WEEK3_COMPLETION_REPORT.md)) |

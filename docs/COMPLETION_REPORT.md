@@ -6,7 +6,7 @@ that is deployed from `main`, the checks that were actually run, and the limitat
 - **Live application:** <https://vendor-bridge-kagnus.vercel.app>
 - **Notification delivery merged:** `354f1ba` on `main`
 - **Database:** managed PostgreSQL (Neon) through Prisma
-- **Last live verification:** 21 October 2026, 09:40 UTC
+- **Live verification:** 21 October 2026, after the deployment build
 
 ---
 
