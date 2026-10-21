@@ -1,0 +1,67 @@
+
+> vendorbridge@1.0.0 test:e2e:notifications
+> node scripts/e2e-week4-notifications.mjs
+
+[warn] Running against non-disposable database ep-muddy-pond-b5q4cgml-pooler.c-7.us-east-2.aws.neon.tech/neondb
+Week 4 notification verification against http://localhost:4000
+
+== 0. Baseline
+  [PASS] N0-1 Seeded accounts resolve to users — 5 users
+
+== 1. RFQ publication notifies assigned vendors only
+  [PASS] N1-1 Assigned vendor receives rfq.published for the real RFQ — #130
+  [PASS] N1-2 The invitation deep-links to the RFQ — /rfqs/193
+  [PASS] N1-3 Publishing adds exactly one notification for the vendor — 0 → 1
+  [PASS] N1-4 The staff actor is not notified of their own publish — 0 rows
+  [PASS] N1-5 An unassigned vendor receives nothing for this RFQ — 0 → 0
+
+== 2. Vendor quotation notifies the RFQ creator
+  [PASS] N2-1 RFQ creator receives quotation.submitted — #131
+  [PASS] N2-2 The quotation notification links to the comparison page — /rfqs/193/quotations
+  [PASS] N2-3 The submitting vendor is not notified of their own quotation
+
+== 3. Approval requested notifies reviewers, not the requester
+  [PASS] N3-1 Manager reviewer receives approval.requested — #132
+  [PASS] N3-2 Admin reviewer receives approval.requested — #133
+  [PASS] N3-3 The request names the RFQ and vendor and links to the approval — RFQ-0193 — Nova Office Supplies at 3790.00 INR needs a decision.
+  [PASS] N3-4 The requesting procurement user is not notified of their own request
+
+== 4. Decision notifies the requester and the vendor
+  [PASS] N4-1 Requester receives approval.approved — #134
+  [PASS] N4-2 Winning vendor receives approval.approved — #135
+  [PASS] N4-3 The deciding manager is not notified of their own decision
+  [PASS] N4-4 The decision body carries the remarks — RFQ-0193 was approved — QA mvhwv4vh
+  [PASS] N4-5 The decision links to the RFQ both roles can open — /rfqs/193 / /rfqs/193
+
+== 5. Purchase order notifies the vendor
+  [PASS] N5-1 Vendor receives purchase_order.generated — #136
+  [PASS] N5-2 The PO notification links to the purchase order and carries the number — /purchase-orders/16
+  [PASS] N5-3 The procurement actor is not notified of the PO they issued
+  [PASS] N5-4 A vendor outside the chain receives nothing
+
+== 6. Invoice and email events
+  [PASS] N6-1 Vendor receives invoice.generated — #137
+  [PASS] N6-2 The invoice notification links to the invoice and names it — /invoices/16
+  [PASS] N6-3 An email attempt produces an operational notification for the team — send 503 (invoice.email_not_configured), notification #138
+  [PASS] N6-4 Delivery feedback is not reported to the vendor whose invoice it is — none
+
+== 7. Per-user API scope, unread count and mark-read lifecycle
+  [PASS] N7-1 GET /notifications returns only the signed-in user's rows — api 4/4, db 4
+  [PASS] N7-2 A different account receives a different, isolated list — manager 1, vendor 4
+  [PASS] N7-3 Another user's notification cannot be marked read (404) — status 404
+  [PASS] N7-4 The denied read did not mutate the owner's row — null
+  [PASS] N7-5 Unread count matches the stored unread rows — api 4, db 4
+  [PASS] N7-6 Marking one notification read persists and decrements the count — updated 1, unread 3
+  [PASS] N7-7 Repeating mark-read is idempotent — updated 0
+  [PASS] N7-8 filter=unread returns only unread rows — 3 rows, unread 3
+  [PASS] N7-9 Mark-all-read clears the stored unread count — updated 3, db unread 0
+  [PASS] N7-10 Anonymous callers cannot read a bell (401) — 401/401
+  [PASS] N7-11 Notifications do not widen audit access for vendors (403) — status 403
+
+== 8. Persistence across a new session
+  [PASS] N8-1 A new session reads the same persisted rows and read state — 4 rows
+
+38 passed, 0 failed
+
+== Cleanup
+  removed 9 notification row(s)

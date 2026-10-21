@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { recordAudit } from "../audit.js";
+import { notifyReviewers, notifyUsers, vendorUserId } from "../notify.js";
 import { ApiError, parse, requireAuth, requireRole } from "../auth.js";
 import { invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
@@ -322,6 +323,16 @@ router.post("/", requireRole(...REQUEST_ROLES), async (req, res) => {
   await invalidateCache("dashboard");
 
   const full = await prisma.approvalRequest.findUnique({ where: { id: created.id }, include: detailInclude });
+  await notifyReviewers(
+    {
+      type: "approval.requested",
+      title: "Approval requested",
+      body: `${full.rfq.reference} — ${full.quotation.vendor.name} at ${full.quotation.total.toFixed(2)} ${full.quotation.currency} needs a decision.`,
+      entityType: "approval",
+      entityId: full.id,
+    },
+    { actorId: req.user.id },
+  );
   res.status(201).json(detailPayload(full, req.user));
 });
 
@@ -412,6 +423,30 @@ async function decide(req, res, decision) {
       return tx.approvalRequest.findUnique({ where: { id }, include: detailInclude });
     },
     { maxWait: 10000, timeout: 20000 },
+  );
+
+  const decisionInfo = await prisma.approvalRequest.findUnique({
+    where: { id },
+    select: {
+      requesterId: true,
+      rfq: { select: { id: true, reference: true } },
+      quotation: { select: { vendorId: true } },
+    },
+  });
+  const vendorUser = await vendorUserId(decisionInfo?.quotation?.vendorId);
+  await notifyUsers(
+    [decisionInfo?.requesterId, vendorUser],
+    {
+      type: decision === "approved" ? "approval.approved" : "approval.rejected",
+      title: decision === "approved" ? "Quotation approved" : "Quotation rejected",
+      body: `${decisionInfo?.rfq?.reference ?? "RFQ"} was ${decision}${data.remarks ? ` — ${data.remarks}` : "."}`,
+      entityType: "approval",
+      entityId: id,
+      // Both the requester (staff) and the vendor receive this row; the RFQ
+      // detail page is the one destination both roles can open.
+      link: decisionInfo?.rfq?.id ? `/rfqs/${decisionInfo.rfq.id}` : `/approvals/${id}`,
+    },
+    { actorId: req.user.id },
   );
 
   await invalidateCache("dashboard");

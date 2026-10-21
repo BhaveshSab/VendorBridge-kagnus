@@ -1,0 +1,5 @@
+﻿Invoice number,Status,Issued,Due,Vendor,Vendor code,Purchase order,Currency,Subtotal,Tax,Total,Email status
+INV-0001,issued,2026-07-15,2026-08-14,Aurora Workspaces,VND-017,PO-0001,INR,399600.00,71928.00,474728.00,sent
+INV-0002,issued,2026-08-15,2026-09-14,Northwind Logistics,VND-018,PO-0002,INR,167600.00,20112.00,187712.00,not_sent
+INV-0003,issued,2026-09-15,2026-10-15,Brightline Software,VND-019,PO-0003,INR,152000.00,27360.00,179360.00,not_sent
+INV-0004,issued,2026-10-15,2026-11-14,Greenfield Facilities,VND-020,PO-0004,INR,120900.00,21762.00,144462.00,not_sent

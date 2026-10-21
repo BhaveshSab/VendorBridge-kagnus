@@ -7,9 +7,10 @@ VendorBridge is a full-stack application — a React single-page front end talki
 Express + PostgreSQL back end through Prisma ORM — implementing authentication, role-aware
 navigation, a procurement dashboard, complete vendor management, the end-to-end
 RFQ → quotation → comparison workflow, the approval → purchase order → invoice workflow with
-server-rendered PDFs and transactional email, and a Week 4 reporting suite with spend analytics,
-CSV exports and an append-only activity trail. Every reported figure is derived from issued
-purchase orders, so a report can never disagree with the documents it summarises.
+server-rendered PDFs and transactional email, a Week 4 reporting suite with spend analytics,
+CSV exports and an append-only activity trail, and a per-user notification centre driven by the
+same events. Every reported figure is derived from issued purchase orders, so a report can never
+disagree with the documents it summarises.
 
 ---
 
@@ -66,7 +67,9 @@ Other scripts:
 | `npm run test:api` | 227-check end-to-end API smoke test, Weeks 1–4 (see §7) |
 | `node scripts/e2e-week2.mjs` | 76-check Week 2 browser E2E suite (app running + disposable `*e2e*` database) |
 | `node scripts/e2e-week3.mjs` | 106-check Week 3 browser E2E suite (approval → PO → invoice, PDF, email) |
-| `npm run db:cleanup-tests` | Remove only `@vendorbridge.test` accounts/vendors created by the test suites |
+| `node scripts/e2e-week4.mjs` | Week 4 QA harness: 80 HTTP/browser/database checks (notifications, audit, reports, CSV, PDF/email, roles) |
+| `npm run test:e2e:notifications` | 38-check notification lifecycle: every event, recipient, actor exclusion and per-user scope (app running) |
+| `npm run db:cleanup-tests` | Remove only `@vendorbridge.test` accounts/vendors, `[smoke]` RFQs and their notifications created by the test suites |
 | `npm run screenshots` | Regenerate the screenshots in `docs/screenshots/` (needs the app running) |
 | `npm run typecheck` | TypeScript check |
 
@@ -262,7 +265,33 @@ fixtures only; never use them in production.
   invoices are counted by issue date, and "overdue" means an issued invoice whose due date has
   passed. Totals come from stored `DECIMAL` values; the browser only formats them.
 
-### 4.8 Redis in production
+### 4.8 Per-user notifications
+
+- **Persistent model** (`notifications`): one row per recipient with `type`, human `title` and
+  `body`, optional `entity_type`/`entity_id`, a deep `link`, optional vendor reference and
+  `read_at`. Deleting a user cascades their rows; deleting a vendor nulls the historical vendor
+  reference instead of destroying the notification. Indexes cover the unread badge and the
+  reverse-chronological inbox.
+- **Written from the event, not the UI**: `server/notify.js` is called by the same route that
+  performs the action, after the transaction commits, so a notification always corresponds to a
+  saved document. A failed insert is logged and never rolls back the business action.
+- **Events covered**: RFQ published/closed/cancelled to assigned vendors; quotation
+  submitted/revised to the RFQ creator; approval requested to Admin/Manager reviewers; approval
+  approved/rejected to the requester and the winning vendor; purchase order issued to the vendor;
+  invoice generated to the vendor; invoice email sent/not-configured/failed to the procurement
+  team and requester. The actor is excluded, duplicates are collapsed, and vendors with no linked
+  account are skipped (they have no bell to notify).
+- **API**: `GET /api/notifications` (newest first, `filter=all|unread`, pagination and an unread
+  total), `GET /api/notifications/unread-count`, `POST /api/notifications/:id/read` and
+  `POST /api/notifications/read-all`. Every query is scoped to `req.user.id`; there is no endpoint
+  that accepts a user id, and another user's notification is reported as `404` so ids cannot be
+  probed. Vendors and staff use the same routes and see only their own rows.
+- **UI**: a bell in the top bar polls the unread count every 30 seconds, shows a badge, opens a
+  panel with All/Unread filters, marks a notification read when it is opened, deep-links to the
+  related document, and offers "Mark all read". The panel uses the same accessible dialog/escape/
+  outside-click behaviour as the profile menu.
+
+### 4.9 Redis in production
 
 - `server/redis.js` is the single connection used by the cache (`server/cache.js`) and the rate
   limiter (`server/rateLimit.js`). It accepts an Upstash **REST** URL plus token (recommended on
@@ -289,7 +318,7 @@ src/                 React SPA
 prisma/
   schema.prisma      PostgreSQL models, relations and indexes
   migrations/        committed SQL migrations (init, rate limits, RFQ quotations, Week 3 documents,
-                     append-only quotation revisions, Week 4 audit log, cascade reconciliation)
+                     append-only quotation revisions, Week 4 audit log, notifications, cascade reconciliation)
 server/
   auth.js            password hashing, JWT, guards, validation error mapping
   db.js              shared Prisma Client, sequences and user mapping
@@ -304,13 +333,15 @@ server/
   cache.js           versioned read cache in front of expensive read models
   redis.js           single Upstash REST/TCP connection, fail-open with cooldown
   rateLimit.js       Redis-first, database-backed rate limiter
+  notify.js          event-driven notification writers, recipient rules and serializer
   routes/            auth.js, vendors.js, rfqs.js, dashboard.js, approvals.js, purchaseOrders.js,
-                     invoices.js, reports.js, activity.js
+                     invoices.js, reports.js, activity.js, notifications.js
   index.js           Express app, security headers, SPA fallback
 scripts/
   smoke-test.mjs     end-to-end API test suite (Weeks 1–4, 227 checks)
   e2e-week2.mjs      Week 2 browser E2E suite (76 checks)
   e2e-week3.mjs      Week 3 browser E2E suite (106 checks: approval → PO → invoice, PDF, email)
+  e2e-week4-notifications.mjs  38-check notification events, recipients and scope (cleans its chain)
   seed-week12-demo.mjs  idempotent demo data: RFQs, quotations, approvals, PO, invoice
   seed-week4-demo.mjs   four backdated procurement chains for the Week 4 reports and audit trail
   screenshots.mjs    screenshot capture for the submission pack
@@ -350,6 +381,8 @@ scripts/
 | `GET` | `/api/reports/vendors` | Admin, Procurement, Manager (supplier performance) |
 | `GET` | `/api/reports/export` | Admin, Procurement, Manager (`type=spend|purchase-orders|invoices`, CSV) |
 | `GET` | `/api/activity`, `/api/activity/:id` | Admin, Procurement, Manager (audit trail; vendors `403`) |
+| `GET` | `/api/notifications`, `/api/notifications/unread-count` | Signed in — always scoped to the session's own rows |
+| `POST` | `/api/notifications/:id/read`, `/api/notifications/read-all` | Signed in — another user's row returns `404` |
 | `POST` | `/api/invoices` | Admin, Procurement (issued PO only; duplicate returns the existing invoice) |
 | `POST` | `/api/invoices/:id/send` | Admin, Procurement (records sent/failed/not_configured) |
 | `GET` | `/api/vendors` | Signed in (vendors see only themselves) |
@@ -522,6 +555,8 @@ name contains `e2e`, and it deletes only the RFQs/quotations it created. Full re
 [`docs/WEEK2_E2E_VERIFICATION.md`](docs/WEEK2_E2E_VERIFICATION.md) with machine-readable results in
 `docs/verification/week2/results.json`.
 
+`scripts/e2e-week4.mjs` is the independent **Week 4 QA harness**: it drives the real HTTP API and a browser against a disposable loopback database, recomputes every reported figure from PostgreSQL, downloads the PDF and CSV files, inspects the mail outbox, and proves audit immutability by attempting a raw `UPDATE`/`DELETE`. Its notification section now runs `scripts/e2e-week4-notifications.mjs`, which creates a real RFQ → quotation → approval → PO → invoice chain, asserts every recipient and scope rule, and removes what it created. The notification harness records **38 passed, 0 failed**; its full output is saved as [`docs/verification/week4/notifications.txt`](docs/verification/week4/notifications.txt). The archived results in [`docs/verification/week4-e2e-results.json`](docs/verification/week4-e2e-results.json) predate the notification subsystem (69 passed, 11 not implemented) and should be regenerated with a fresh disposable-database run. The notification harness refuses to run against a database that is not loopback with `e2e` in its name unless `NOTIFY_E2E_ALLOW_REMOTE=1` is set; the recorded run used that explicit override against the configured development database and removed its chain afterwards.
+
 `scripts/e2e-week3.mjs` is a **106-check browser suite** for the Week 3 flow: procurement requests
 approval in the UI, the manager approves, the PO is generated and opened, the invoice is generated,
 downloaded as a PDF (verified by its `%PDF-` header) and printed, email delivery is exercised
@@ -572,7 +607,9 @@ set `CHROME_PATH` if Brave/Chrome is installed elsewhere).
 
 E2E evidence (validation errors, empty states, expiry, revision, comparison) lives in
 [`docs/verification/week2/`](docs/verification/week2/) — 17 captures plus `results.json` — and the
-Week 3 run in [`docs/verification/week3/`](docs/verification/week3/).
+Week 3 run in [`docs/verification/week3/`](docs/verification/week3/). The Week 4 QA browser
+walkthrough (reports at 90 days and 12 months, export toast, activity drawer, print view, email
+feedback, role-denied screen and 375 px layout) is in [`docs/screenshots/week4/`](docs/screenshots/week4/).
 
 ### Demo data
 
@@ -619,10 +656,14 @@ and short motion that respects `prefers-reduced-motion`.
   draft RFQs contribute nothing to value. Multi-currency periods report the dominant currency in
   detail and disclose how many orders sit in other currencies instead of adding unlike amounts.
   There is no forecasting, scheduled report email or Excel (`.xlsx`) output — CSV only.
+- **Notifications** are in-app only and poll every 30 seconds; there is no email, push or realtime
+  channel, no per-type preferences, and no retention job (rows live until the account is deleted).
+  Vendor recipients exist only where a vendor record is linked to a login; imported vendors without
+  an account simply receive no bell.
 - **Audit trail scope**: the trail is append-only, which also means test actions cannot be removed;
-  `npm run db:cleanup-tests` removes test accounts, vendors and RFQs but the audit rows remain by
-  design. There is no retention policy, log shipping or separate export yet; staff read it in the
-  app with filters. IP addresses come from `X-Forwarded-For` and are only as trustworthy as the
+  `npm run db:cleanup-tests` removes test accounts, vendors, RFQs and their notifications but the
+  audit rows remain by design. There is no retention policy, log shipping or separate export yet;
+  staff read it in the app with filters. IP addresses come from `X-Forwarded-For` and are only as trustworthy as the
   proxy in front of the API.
 - **RFQ attachments** (drag-and-drop uploads) and per-line tax/shipping from the wireframe remain
   out of scope — tax, shipping and delivery are quotation-level, with per-line prices.
@@ -631,9 +672,10 @@ and short motion that respects `prefers-reduced-motion`.
   in `.env`, so it must be provisioned before the app can start.
 - **Automated UI tests**: the 76-check Week 2 and 106-check Week 3 browser suites
   (`scripts/e2e-week2.mjs`, `scripts/e2e-week3.mjs`, Chromium at 1440×900) cover those workflows
-  end to end; Week 1/4 flows are covered by the 227-check API suite plus the captured screens and a
-  manual walkthrough. Both harnesses only accept a loopback database whose name contains `e2e` —
-  run them against staging by mistake and they refuse rather than write there.
+  end to end; Week 4 adds the notification lifecycle suite (`scripts/e2e-week4-notifications.mjs`),
+  and the full Week 4 QA harness delegates its notification checks to it. The browser harnesses only
+  accept a loopback database whose name contains `e2e` — run against staging by mistake and they
+  refuse rather than write there.
 - **Deployment**: Vercel hosts the Vite build plus `api/index.js` (Express as one serverless
   function, `maxDuration` 30s) and Neon hosts PostgreSQL; migrations run during the build via
   `npm run db:deploy`. The serverless function is stateless, so rate limits use Redis when
@@ -664,7 +706,10 @@ and short motion that respects `prefers-reduced-motion`.
 | Approval → purchase order → invoice workflow | ✅ implemented & verified end to end (106-check browser suite, [report](docs/WEEK3_COMPLETION_REPORT.md)) |
 | Week 3 completion report | ✅ [docs/WEEK3_COMPLETION_REPORT.md](docs/WEEK3_COMPLETION_REPORT.md) |
 | Reports, CSV exports and append-only audit trail | ✅ implemented & verified by 227 API checks ([report](docs/WEEK4_COMPLETION_REPORT.md)) |
+| Per-user notifications (bell, unread count, mark-read) | ✅ implemented; 38-check lifecycle suite verifies event writers, recipients and per-user scope |
 | Week 4 completion report | ✅ [docs/WEEK4_COMPLETION_REPORT.md](docs/WEEK4_COMPLETION_REPORT.md) |
+| Notification lifecycle evidence | ✅ [38-check output](docs/verification/week4/notifications.txt) — events, recipients, actor exclusion, scope and persistence |
+| Archived full Week 4 QA pack | ⚠️ [results JSON](docs/verification/week4-e2e-results.json), [CSV exports](docs/verification/week4/exports/), [screenshots](docs/screenshots/week4/) — the JSON predates notifications; rerun `node scripts/e2e-week4.mjs` on a disposable database to refresh it |
 | Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) — features, commands actually run, audit findings and limitations |
 | Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `feat/week4-reports-audit` |
 | PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema; 227 API checks pass against it |

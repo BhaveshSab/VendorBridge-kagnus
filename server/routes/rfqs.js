@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { recordAudit } from "../audit.js";
+import { notifyRfqCreator, notifyRfqVendors } from "../notify.js";
 import { ApiError, currentVendorFor, parse, requireAuth, requireRole } from "../auth.js";
 import { invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
@@ -793,6 +794,17 @@ router.post("/:id/publish", requireRole(...WRITE_ROLES), async (req, res) => {
     },
     { maxWait: 10000, timeout: 20000 },
   );
+  await notifyRfqVendors(
+    id,
+    {
+      type: "rfq.published",
+      title: "New RFQ invitation",
+      body: `${rfq.reference} — ${rfq.title} is open for quotations.`,
+      entityType: "rfq",
+      entityId: id,
+    },
+    { actorId: req.user.id },
+  );
   await invalidateCache("dashboard");
   res.json({ rfq: rfqDetailOut(updated, { submissions: buildSubmissions(updated, []) }) });
 });
@@ -841,6 +853,17 @@ router.post("/:id/close", requireRole(...WRITE_ROLES), async (req, res) => {
     where: { rfqId: id, ...ACTIVE_QUOTATION },
     select: { id: true, vendorId: true, total: true, submittedAt: true, revision: true },
   });
+  await notifyRfqVendors(
+    id,
+    {
+      type: "rfq.closed",
+      title: "RFQ closed",
+      body: `${rfq.reference} — ${rfq.title} is no longer accepting quotations.`,
+      entityType: "rfq",
+      entityId: id,
+    },
+    { actorId: req.user.id },
+  );
   await invalidateCache("dashboard");
   res.json({ rfq: rfqDetailOut(updated, { submissions: buildSubmissions(updated, quotations) }) });
 });
@@ -885,6 +908,19 @@ router.post("/:id/cancel", requireRole(...WRITE_ROLES), async (req, res) => {
     },
     { maxWait: 10000, timeout: 20000 },
   );
+  if (rfq.status === "open") {
+    await notifyRfqVendors(
+      id,
+      {
+        type: "rfq.cancelled",
+        title: "RFQ cancelled",
+        body: `${rfq.reference} — ${rfq.title} has been cancelled.`,
+        entityType: "rfq",
+        entityId: id,
+      },
+      { actorId: req.user.id },
+    );
+  }
   await invalidateCache("dashboard");
   res.json({ rfq: rfqDetailOut(updated, { submissions: [] }) });
 });
@@ -1200,6 +1236,19 @@ router.put("/:id/quotation", requireRole("vendor"), async (req, res) => {
     if (isUniqueViolation(error)) result = await write();
     else throw error;
   }
+
+  await notifyRfqCreator(
+    id,
+    {
+      type: result.created ? "quotation.submitted" : "quotation.revised",
+      title: result.created ? "Quotation received" : "Quotation revised",
+      body: `${vendor.name} ${result.created ? "submitted" : "revised"} a quotation for ${rfq.reference} (${result.quotation.total.toFixed(2)} ${result.quotation.currency}).`,
+      entityType: "rfq",
+      entityId: id,
+      link: `/rfqs/${id}/quotations`,
+    },
+    { actorId: req.user.id },
+  );
 
   // The dashboard's quotation count (and a vendor's "submitted" tile) move here.
   await invalidateCache("dashboard");
