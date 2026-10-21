@@ -1,4 +1,8 @@
-VendorBridge API smoke test against http://localhost:4000
+
+> vendorbridge@1.0.0 test:api
+> node scripts/smoke-test.mjs
+
+VendorBridge API smoke test against http://127.0.0.1:4100
 
 1. Authentication and session handling
   ✓ health reports the API and database are ready

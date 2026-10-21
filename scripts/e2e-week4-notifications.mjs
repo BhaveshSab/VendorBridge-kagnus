@@ -48,7 +48,15 @@ if (!loopback || !disposable) {
 
 const prisma = new PrismaClient();
 const results = [];
-const created = { rfqId: null, approvalId: null, purchaseOrderId: null, invoiceId: null };
+const created = {
+  rfqId: null,
+  approvalId: null,
+  purchaseOrderId: null,
+  invoiceId: null,
+  rejectionRfqId: null,
+  rejectionApprovalId: null,
+  cancelledRfqId: null,
+};
 
 function check(id, name, condition, evidence = "") {
   const outcome = condition ? "PASS" : "FAIL";
@@ -434,6 +442,143 @@ async function main() {
     `${freshList.body?.items?.length ?? 0} rows`,
   );
 
+  // ---------------------------------------------------- rejected approval
+  section("9. Rejected approval notifies requester and vendor, not the decider");
+  const rejectionRfqCreated = await procurement("POST", "/rfqs", {
+    title: `${PREFIX} rejection ${stamp}`,
+    description: "Week 4 notification rejection QA record. Safe to remove.",
+    currency: "INR",
+    deadline: new Date(Date.now() + 7 * DAY).toISOString(),
+    vendorIds: [nova.id],
+    items: [{ description: "Rejection QA item", quantity: 1, unit: "unit", specifications: "Harness only" }],
+  });
+  if (rejectionRfqCreated.status !== 201) {
+    throw new Error(`Rejection RFQ create failed (${rejectionRfqCreated.status}): ${rejectionRfqCreated.text.slice(0, 300)}`);
+  }
+  const rejectionRfq = rejectionRfqCreated.body.rfq;
+  created.rejectionRfqId = rejectionRfq.id;
+  const rejectionPublished = await procurement("POST", `/rfqs/${rejectionRfq.id}/publish`);
+  if (rejectionPublished.status !== 200) throw new Error(`Rejection RFQ publish failed (${rejectionPublished.status})`);
+
+  const rejectionQuoteResponse = await vendor("PUT", `/rfqs/${rejectionRfq.id}/quotation`, {
+    deliveryDays: 5,
+    deliveryTerms: "Delivered to site",
+    notes: "Rejection QA quotation.",
+    taxPercent: 18,
+    shippingAmount: 0,
+    items: rejectionRfq.items.map((item) => ({ rfqItemId: item.id, unitPrice: 9000 })),
+  });
+  if (rejectionQuoteResponse.status !== 201) {
+    throw new Error(`Rejection quotation failed (${rejectionQuoteResponse.status}): ${rejectionQuoteResponse.text.slice(0, 300)}`);
+  }
+  const rejectionRequest = await procurement("POST", "/approvals", {
+    quotationId: rejectionQuoteResponse.body.quotation.id,
+  });
+  if (rejectionRequest.status !== 201) {
+    throw new Error(`Rejection approval request failed (${rejectionRequest.status}): ${rejectionRequest.text.slice(0, 300)}`);
+  }
+  const rejectionApproval = rejectionRequest.body.approval;
+  created.rejectionApprovalId = rejectionApproval.id;
+  const rejectionRemarks = `Not competitive ${stamp}`;
+  const rejected = await manager("POST", `/approvals/${rejectionApproval.id}/reject`, { remarks: rejectionRemarks });
+  if (rejected.status !== 200) {
+    throw new Error(`Rejection decision failed (${rejected.status}): ${rejected.text.slice(0, 300)}`);
+  }
+
+  const requesterRejected = findRow(
+    await rowsFor(userId[accounts.procurement.email]),
+    "approval.rejected",
+    rejectionApproval.id,
+  );
+  const vendorRejected = findRow(
+    await rowsFor(userId[accounts.vendor.email]),
+    "approval.rejected",
+    rejectionApproval.id,
+  );
+  const managerRejected = findRow(
+    await rowsFor(userId[accounts.manager.email]),
+    "approval.rejected",
+    rejectionApproval.id,
+  );
+  const adminRejected = findRow(
+    await rowsFor(userId[accounts.admin.email]),
+    "approval.rejected",
+    rejectionApproval.id,
+  );
+  check("N9-1", "Rejection notifies the requesting procurement user", Boolean(requesterRejected), requesterRejected ? `#${requesterRejected.id}` : "missing");
+  check("N9-2", "Rejection notifies the winning vendor", Boolean(vendorRejected), vendorRejected ? `#${vendorRejected.id}` : "missing");
+  check("N9-3", "The deciding manager is not notified of their own rejection", managerRejected === null, managerRejected ? `unexpected #${managerRejected.id}` : "none");
+  check(
+    "N9-4",
+    "Reviewers who did not request the approval receive no rejection row",
+    adminRejected === null,
+    adminRejected ? `unexpected #${adminRejected.id}` : "none",
+  );
+  check(
+    "N9-5",
+    "The rejection body carries the remarks and RFQ reference",
+    Boolean(requesterRejected?.body.includes(rejectionRemarks) && requesterRejected?.body.includes(rejectionRfq.reference)),
+    requesterRejected?.body?.slice(0, 120),
+  );
+  check(
+    "N9-6",
+    "Rejection links to the RFQ both roles can open",
+    requesterRejected?.link === `/rfqs/${rejectionRfq.id}` && vendorRejected?.link === `/rfqs/${rejectionRfq.id}`,
+    `${requesterRejected?.link ?? "none"} / ${vendorRejected?.link ?? "none"}`,
+  );
+
+  // ------------------------------------------------------- cancelled RFQ
+  section("10. Cancelled RFQ notifies assigned vendors only");
+  const cancelRfqCreated = await procurement("POST", "/rfqs", {
+    title: `${PREFIX} cancellation ${stamp}`,
+    description: "Week 4 notification cancellation QA record. Safe to remove.",
+    currency: "INR",
+    deadline: new Date(Date.now() + 7 * DAY).toISOString(),
+    vendorIds: [nova.id],
+    items: [{ description: "Cancellation QA item", quantity: 3, unit: "unit", specifications: "Harness only" }],
+  });
+  if (cancelRfqCreated.status !== 201) {
+    throw new Error(`Cancellation RFQ create failed (${cancelRfqCreated.status}): ${cancelRfqCreated.text.slice(0, 300)}`);
+  }
+  const cancelRfq = cancelRfqCreated.body.rfq;
+  created.cancelledRfqId = cancelRfq.id;
+  const cancelPublished = await procurement("POST", `/rfqs/${cancelRfq.id}/publish`);
+  if (cancelPublished.status !== 200) throw new Error(`Cancellation RFQ publish failed (${cancelPublished.status})`);
+
+  const cancelled = await procurement("POST", `/rfqs/${cancelRfq.id}/cancel`);
+  check(
+    "N10-1",
+    "An open RFQ can be cancelled",
+    cancelled.status === 200 && cancelled.body?.rfq?.status === "cancelled",
+    `status ${cancelled.status}, RFQ ${cancelled.body?.rfq?.reference ?? "missing"}`,
+  );
+  const vendorCancelled = findRow(await rowsFor(userId[accounts.vendor.email]), "rfq.cancelled", cancelRfq.id);
+  const procurementCancelled = findRow(
+    await rowsFor(userId[accounts.procurement.email]),
+    "rfq.cancelled",
+    cancelRfq.id,
+  );
+  const zenithCancelled = findRow(await rowsFor(userId[accounts.zenith.email]), "rfq.cancelled", cancelRfq.id);
+  check("N10-2", "The assigned vendor receives rfq.cancelled", Boolean(vendorCancelled), vendorCancelled ? `#${vendorCancelled.id}` : "missing");
+  check(
+    "N10-3",
+    "The cancellation body names the RFQ and links to it",
+    Boolean(vendorCancelled?.body.includes(cancelRfq.reference)) && vendorCancelled?.link === `/rfqs/${cancelRfq.id}`,
+    vendorCancelled?.link ?? "no link",
+  );
+  check(
+    "N10-4",
+    "The procurement actor is not notified of their own cancellation",
+    procurementCancelled === null,
+    procurementCancelled ? `unexpected #${procurementCancelled.id}` : "none",
+  );
+  check(
+    "N10-5",
+    "An unassigned vendor receives no cancellation",
+    zenithCancelled === null,
+    zenithCancelled ? `unexpected #${zenithCancelled.id}` : "none",
+  );
+
   return results;
 }
 
@@ -444,6 +589,9 @@ async function cleanup() {
     ["approval", created.approvalId],
     ["purchase_order", created.purchaseOrderId],
     ["invoice", created.invoiceId],
+    ["rfq", created.rejectionRfqId],
+    ["approval", created.rejectionApprovalId],
+    ["rfq", created.cancelledRfqId],
   ]
     .filter(([, id]) => id !== null)
     .map(([entityType, id]) => ({ entityType, entityId: String(id) }));
@@ -460,9 +608,13 @@ async function cleanup() {
   if (created.approvalId) {
     await prisma.approvalRequest.deleteMany({ where: { id: created.approvalId } });
   }
-  if (created.rfqId) {
-    await prisma.rfq.delete({ where: { id: created.rfqId } }).catch((error) => {
-      console.error(`  RFQ cleanup failed: ${error.message}`);
+  if (created.rejectionApprovalId) {
+    await prisma.approvalRequest.deleteMany({ where: { id: created.rejectionApprovalId } });
+  }
+  for (const rfqId of [created.rfqId, created.rejectionRfqId, created.cancelledRfqId]) {
+    if (!rfqId) continue;
+    await prisma.rfq.delete({ where: { id: rfqId } }).catch((error) => {
+      console.error(`  RFQ cleanup failed for ${rfqId}: ${error.message}`);
     });
   }
 }

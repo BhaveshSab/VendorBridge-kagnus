@@ -68,7 +68,7 @@ Other scripts:
 | `node scripts/e2e-week2.mjs` | 76-check Week 2 browser E2E suite (app running + disposable `*e2e*` database) |
 | `node scripts/e2e-week3.mjs` | 106-check Week 3 browser E2E suite (approval → PO → invoice, PDF, email) |
 | `node scripts/e2e-week4.mjs` | Week 4 QA harness: 80 HTTP/browser/database checks (notifications, audit, reports, CSV, PDF/email, roles) |
-| `npm run test:e2e:notifications` | 38-check notification lifecycle: every event, recipient, actor exclusion and per-user scope (app running) |
+| `npm run test:e2e:notifications` | 49-check notification lifecycle: every event (including rejection and cancellation), recipient, actor exclusion and per-user scope (app running) |
 | `npm run db:cleanup-tests` | Remove only `@vendorbridge.test` accounts/vendors, `[smoke]` RFQs and their notifications created by the test suites |
 | `npm run screenshots` | Regenerate the screenshots in `docs/screenshots/` (needs the app running) |
 | `npm run typecheck` | TypeScript check |
@@ -357,7 +357,7 @@ scripts/
   smoke-test.mjs     end-to-end API test suite (Weeks 1–4, 227 checks)
   e2e-week2.mjs      Week 2 browser E2E suite (76 checks)
   e2e-week3.mjs      Week 3 browser E2E suite (106 checks: approval → PO → invoice, PDF, email)
-  e2e-week4-notifications.mjs  38-check notification events, recipients and scope (cleans its chain)
+  e2e-week4-notifications.mjs  49-check notification events, recipients and scope (cleans its chains)
   seed-week12-demo.mjs  idempotent demo data: RFQs, quotations, approvals, PO, invoice
   seed-week4-demo.mjs   four backdated procurement chains for the Week 4 reports and audit trail
   screenshots.mjs    screenshot capture for the submission pack
@@ -571,7 +571,7 @@ name contains `e2e`, and it deletes only the RFQs/quotations it created. Full re
 [`docs/WEEK2_E2E_VERIFICATION.md`](docs/WEEK2_E2E_VERIFICATION.md) with machine-readable results in
 `docs/verification/week2/results.json`.
 
-`scripts/e2e-week4.mjs` is the independent **Week 4 QA harness**: it drives the real HTTP API and a browser against a disposable loopback database, recomputes every reported figure from PostgreSQL, downloads the PDF and CSV files, inspects the mail outbox, and proves audit immutability by attempting a raw `UPDATE`/`DELETE`. Its notification section now runs `scripts/e2e-week4-notifications.mjs`, which creates a real RFQ → quotation → approval → PO → invoice chain, asserts every recipient and scope rule, and removes what it created. The notification harness records **38 passed, 0 failed**; its full output is saved as [`docs/verification/week4/notifications.txt`](docs/verification/week4/notifications.txt). The archived results in [`docs/verification/week4-e2e-results.json`](docs/verification/week4-e2e-results.json) predate the notification subsystem (69 passed, 11 not implemented) and should be regenerated with a fresh disposable-database run. The notification harness refuses to run against a database that is not loopback with `e2e` in its name unless `NOTIFY_E2E_ALLOW_REMOTE=1` is set; the recorded run used that explicit override against the configured development database and removed its chain afterwards.
+`scripts/e2e-week4.mjs` is the independent **Week 4 QA harness**: it drives the real HTTP API and a browser against a disposable loopback database, recomputes every reported figure from PostgreSQL, downloads the PDF and CSV files, inspects the mail outbox, and proves audit immutability by attempting a raw `UPDATE`/`DELETE`. Its notification section runs `scripts/e2e-week4-notifications.mjs`, which creates real RFQ → quotation → approval → PO → invoice chains plus a rejected approval and a cancelled RFQ, asserts every recipient and scope rule (including actor exclusion), and removes what it created. The notification harness records **49 passed, 0 failed**; its full output is saved as [`docs/verification/week4/notifications.txt`](docs/verification/week4/notifications.txt). The full archive in [`docs/verification/week4-e2e-results.json`](docs/verification/week4-e2e-results.json) was regenerated on a fresh disposable UTF-8 database and records **78 passed, 0 failed and 2 not implemented of 80 checks**. Both harnesses refuse to run unless the target is loopback with `e2e` in its name; `NOTIFY_E2E_ALLOW_REMOTE=1` exists only for an explicitly disposable remote database.
 
 `scripts/e2e-week3.mjs` is a **106-check browser suite** for the Week 3 flow: procurement requests
 approval in the UI, the manager approves, the PO is generated and opened, the invoice is generated,
@@ -623,7 +623,8 @@ set `CHROME_PATH` if Brave/Chrome is installed elsewhere).
 
 | Notifications (Week 4) | |
 | --- | --- |
-| [Bell with a real quotation event](docs/screenshots/37-week4-notifications.png) | [Deployed bell on the live app](docs/screenshots/week4/10-live-notification-bell.png) |
+| [Bell with a real quotation event](docs/screenshots/37-week4-notifications.png) | [Current QA: notification dialog](docs/screenshots/week4/10-notification-bell.png) |
+| [Current QA: dashboard badge](docs/screenshots/week4/01-dashboard-notifications.png) | [Deployed bell on the live app](docs/screenshots/week4/10-live-notification-bell.png) |
 
 E2E evidence (validation errors, empty states, expiry, revision, comparison) lives in
 [`docs/verification/week2/`](docs/verification/week2/) — 17 captures plus `results.json` — and the
@@ -726,10 +727,10 @@ and short motion that respects `prefers-reduced-motion`.
 | Approval → purchase order → invoice workflow | ✅ implemented & verified end to end (106-check browser suite, [report](docs/WEEK3_COMPLETION_REPORT.md)) |
 | Week 3 completion report | ✅ [docs/WEEK3_COMPLETION_REPORT.md](docs/WEEK3_COMPLETION_REPORT.md) |
 | Reports, CSV exports and append-only audit trail | ✅ implemented & verified by 227 API checks ([report](docs/WEEK4_COMPLETION_REPORT.md)) |
-| Per-user notifications (bell, unread count, mark-read) | ✅ implemented; 38-check lifecycle suite verifies event writers, recipients and per-user scope |
+| Per-user notifications (bell, unread count, mark-read) | ✅ implemented; 49-check lifecycle suite verifies event writers, recipients, rejection/cancellation rules and per-user scope |
 | Week 4 completion report | ✅ [docs/WEEK4_COMPLETION_REPORT.md](docs/WEEK4_COMPLETION_REPORT.md) |
-| Notification lifecycle evidence | ✅ [38-check output](docs/verification/week4/notifications.txt) — events, recipients, actor exclusion, scope and persistence |
-| Archived full Week 4 QA pack | ⚠️ [results JSON](docs/verification/week4-e2e-results.json), [CSV exports](docs/verification/week4/exports/), [screenshots](docs/screenshots/week4/) — the JSON predates notifications; rerun `node scripts/e2e-week4.mjs` on a disposable database to refresh it |
+| Notification lifecycle evidence | ✅ [49-check output](docs/verification/week4/notifications.txt) — events, recipients, rejection/cancellation actor exclusion, scope and persistence |
+| Full Week 4 QA pack | ✅ [80-check results](docs/verification/week4-e2e-results.json), [CSV exports](docs/verification/week4/exports/), [screenshots](docs/screenshots/week4/) — 78 passed, 0 failed, 2 documented not-implemented contract gaps |
 | Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) — features, commands actually run, audit findings and limitations |
 | Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), `main` |
 | Working deployed application | ✅ <https://vendor-bridge-kagnus.vercel.app> — deployment verified 21 Oct 2026 |

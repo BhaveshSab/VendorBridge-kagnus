@@ -84,7 +84,8 @@ bell from that point forward. The populated bell is demonstrated with a real loc
 
 | Check | Result |
 | --- | --- |
-| `npm run test:e2e:notifications` | **38 passed, 0 failed** — full output in [`docs/verification/week4/notifications.txt`](verification/week4/notifications.txt) |
+| `npm run test:e2e:notifications` | **49 passed, 0 failed** — full output in [`docs/verification/week4/notifications.txt`](verification/week4/notifications.txt) |
+| `node scripts/e2e-week4.mjs` | **78 passed, 0 failed, 2 not implemented of 80** against a fresh disposable UTF-8 PostgreSQL database with a real browser; current archive in [`docs/verification/week4-e2e-results.json`](verification/week4-e2e-results.json) |
 | `npm run test:api` | **227 passed, 0 failed** |
 | `npm run typecheck` | pass |
 | `npm run build` | pass (one Vite chunk-size warning) |
@@ -92,21 +93,24 @@ bell from that point forward. The populated bell is demonstrated with a real loc
 | `node --check` on changed server and test scripts | pass |
 | `git diff --check` | clean |
 
-The notification suite creates a real RFQ → quotation → approval → purchase order → invoice →
-email-attempt chain, asserts recipients and per-user scope, verifies cross-user `404`, unread
-counts and mark-all-read, then removes the chain. It ran against the configured development
-database with `NOTIFY_E2E_ALLOW_REMOTE=1`; the output records that override.
+The notification suite creates real RFQ → quotation → approval → purchase order → invoice →
+email-attempt chains plus a rejected approval and a cancelled RFQ, asserts recipients and per-user
+scope, verifies cross-user `404`, unread counts and mark-all-read, then removes every chain. It ran
+against the disposable loopback database through `http://localhost:4100`; no remote override was
+needed. Rejection recipients (requester and winning vendor; not the deciding manager or other
+reviewers) and cancellation recipients (assigned vendor only; not the actor or unassigned vendor)
+are asserted separately.
 
 The Week 2 (76-check) and Week 3 (106-check) browser suites were run in their own sessions and
 their results remain under [`docs/verification/week2/`](verification/week2/) and
 [`docs/verification/week3/`](verification/week3/). They were not re-run during this deployment
 check.
 
-The 80-check Week 4 browser harness has not been re-run against a disposable local database after
-the notification work. Its archived JSON still contains the 11 notification checks from before the
-subsystem existed, and is labelled as historical. The notification portion is now delegated to
-the 38-check suite; the remaining report/audit/PDF/email browser checks are covered by the archive
-and the live checks above.
+The 80-check Week 4 browser harness was re-run against a fresh disposable local UTF-8 database
+after the notification work. It records **78 passed, 0 failed and 2 not implemented** (the two
+documented contract gaps R-5 and A-19). The notification section delegates to the 49-check suite,
+whose output proves all event writers — including rejected approvals and cancelled RFQs — plus
+recipient rules and actor exclusion.
 
 ---
 
@@ -137,7 +141,7 @@ and the live checks above.
 | Week 4 report | [`docs/WEEK4_COMPLETION_REPORT.md`](WEEK4_COMPLETION_REPORT.md) |
 | Notification lifecycle evidence | [`docs/verification/week4/notifications.txt`](verification/week4/notifications.txt) |
 | Lifecycle, reports and notification screenshots | [`docs/screenshots/`](screenshots/) |
-| Historical Week 4 QA archive | [`docs/verification/week4/WEEK4_E2E_REPORT.md`](verification/week4/WEEK4_E2E_REPORT.md) |
+| Week 4 QA archive | [`docs/verification/week4/WEEK4_E2E_REPORT.md`](verification/week4/WEEK4_E2E_REPORT.md) and [`docs/verification/week4-e2e-results.json`](verification/week4-e2e-results.json) |
 
 ---
 
@@ -147,12 +151,12 @@ and the live checks above.
   preferences, and no retention job.
 - Vendor recipients exist only where a vendor record has a linked login account; imported vendors
   without an account have no bell to notify.
-- The notification tests exercise publish, quotation, approval-request, approval-approval, PO,
-  invoice and email events. Rejection, RFQ close/cancel and quotation revision use the same writers
-  but are not separately asserted by the focused suite.
-- The full 80-check Week 4 browser harness and its JSON archive have not been regenerated because
-  they require a disposable loopback PostgreSQL database and browser fixture. The report and JSON
-  are marked historical, and the fresh 38-check notification output is the current evidence.
+- The notification tests exercise publish, quotation, approval-request, approval-approval,
+  approval-rejection, RFQ cancellation, PO, invoice and email events. Quotation revision uses the
+  same writers but is not separately asserted by the focused suite.
+- The 80-check Week 4 browser harness and its JSON archive were regenerated on a fresh disposable
+  database; the two remaining `not implemented` items are the documented API-contract gaps R-5 and
+  A-19, not failures. Email delivery used the explicit local dev outbox rather than a live provider.
 - The Week 2/3 browser suites were not re-run during this deployment check; their last recorded
   results are preserved in their evidence directories.
 - There is no CI pipeline; all checks are run manually in the workspace.

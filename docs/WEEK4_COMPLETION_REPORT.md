@@ -110,15 +110,13 @@ documents through the existing PO/invoice endpoints — never aggregate spend.
 
 | Command | Target | Result |
 | --- | --- | --- |
-| `npm run test:api` | configured PostgreSQL database (Neon `neondb`) via `http://localhost:4000` | **227 passed, 0 failed** |
+| `npm run test:api` | disposable loopback database `vendorbridge_wk4_e2e_utf8` via `http://localhost:4100` | **227 passed, 0 failed** (opening and closing runs) |
 | `npm run typecheck` | repo | pass (`tsc -b --pretty false`) |
 | `npm run build` | repo | pass (Vite chunk-size warning only) |
-| `npx prisma migrate status` | configured database | **11 migrations found — Database schema is up to date!** |
-| `npm run db:status` | configured database | connection OK; users/vendors/RFQs/quotations/counters/rate limits present |
-| `npm run db:seed-week4` | configured database through the real API | first run created four chains (RFQ-0113…0116); re-run reported all four as *already seeded*, and the overview then read **5 orders · INR 14,80,822 · 5 months** |
-| `npm run db:cleanup-tests` | configured database | removed only 5 `@vendorbridge.test` accounts, 5 test vendors, 13 `[smoke]` RFQs and 19 test notifications; demo data untouched |
-| `npm run db:deploy` | configured database | applied `20261021160000_add_notifications` |
-| `NOTIFY_E2E_ALLOW_REMOTE=1 npm run test:e2e:notifications` | configured database through `http://localhost:4000` | **38 passed, 0 failed** (events, recipients, actor exclusion, scope, persistence; chain removed afterwards) |
+| `npm run db:deploy` | disposable loopback database | applied all 11 migrations on the fresh cluster; second run reported **Database schema is up to date** |
+| `npm run db:seed-week4` | disposable loopback database through the real API | created four chains (RFQ-0001…0004), four POs and four invoices; overview read **4 orders · INR 9,86,262 · 5 months** |
+| `npm run test:e2e:notifications` | disposable loopback database through `http://localhost:4100` | **49 passed, 0 failed** — every event, including rejected approvals and cancelled RFQs, recipients, actor exclusion, scope and persistence; chains removed afterwards |
+| `node scripts/e2e-week4.mjs` | disposable loopback database, real browser, and fresh UTF-8 cluster | **78 passed, 0 failed, 2 `FAIL — NOT IMPLEMENTED` of 80** — current archive is [`week4-e2e-results.json`](verification/week4-e2e-results.json) |
 | `node --check` on new/changed server and script files | repo | pass |
 
 ### What the 227 API checks cover (Week 4 additions)
@@ -164,11 +162,12 @@ refuses a remote database unless `ALLOW_REMOTE_SEED=true`, and skips a scenario 
 already exists (idempotent — a second run adds no documents, only the sign-in audit rows it
 produces itself).
 
-Totals on the configured development database at the time of writing: 21 RFQs, 20 quotations,
-7 approvals, 5 purchase orders, 5 invoices and **180+ audit entries across 17 distinct
-actions** (the exact count grows with every test run, because the trail cannot be trimmed).
+The fresh disposable database used for the QA archive contains four complete chains:
+4 RFQs, 4 quotations, 4 approvals, 4 purchase orders, 4 invoices and **38 audit entries**.
 The seeder also verifies itself: it re-reads `/api/reports/overview` and `/api/activity` and
-prints the order count, awarded value, month count and audit entry count it finds.
+prints the order count, awarded value, month count and audit entry count it finds. The longer-lived
+configured development database has more history; its count grows with every test run because the
+trail cannot be trimmed.
 
 Screenshots (synthetic data only):
 
@@ -179,7 +178,9 @@ Screenshots (synthetic data only):
 | `docs/screenshots/35-week4-activity.png` | Activity trail with filters, facets and action chips |
 | `docs/screenshots/36-week4-audit-detail.png` | Audit entry drawer with metadata and the record's other events |
 | `docs/screenshots/37-week4-notifications.png` | Bell opened on a real quotation event, with the unread badge |
-| `docs/screenshots/week4/10-live-notification-bell.png` | The deployed application's notification dialog |
+| `docs/screenshots/week4/01-dashboard-notifications.png` | Dashboard with the live notification bell and unread badge, captured by the Week 4 harness |
+| `docs/screenshots/week4/10-notification-bell.png` | Notification dialog opened on a real seeded event, with All/Unread and Mark all read |
+| `docs/screenshots/week4/10-live-notification-bell.png` | Earlier capture of the deployed application's notification dialog |
 
 ## 7. Migrations and configuration
 
@@ -199,26 +200,25 @@ but leaves the audit entries those actions produced. That is intentional — the
 
 ## 8. Independent Week 4 QA (2026-10-21)
 
-The separate harness `scripts/e2e-week4.mjs` (80 HTTP, browser and database checks) was run against a
-disposable loopback PostgreSQL database after the 227-check API suite passed. Its archived run
-predates the notification subsystem and recorded **69 passed, 0 failed and 11 `FAIL — NOT
-IMPLEMENTED`** for the then-missing bell. That section now delegates to
-`scripts/e2e-week4-notifications.mjs`; against the configured database it records **38 passed, 0
-failed**, including the event writers, actor exclusion, vendor scoping, cross-user `404`,
-mark-read/mark-all-read and persistence. Its full output is
-[`docs/verification/week4/notifications.txt`](verification/week4/notifications.txt). Reports, CSV
-exports (including the formula-injection guard), audit immutability triggers, PDF, print, email
-delivery, role enforcement and mobile layout all passed. Re-run `scripts/e2e-week4.mjs` against a
-fresh disposable database to refresh the archived JSON. Evidence:
-[`docs/verification/week4-e2e-results.json`](verification/week4-e2e-results.json),
+The separate harness `scripts/e2e-week4.mjs` (80 HTTP, browser and database checks) was run against
+a fresh disposable loopback PostgreSQL cluster (`127.0.0.1:55432/vendorbridge_wk4_e2e_utf8`,
+UTF-8) after the 227-check API suite passed. The current archive records **78 passed, 0 failed and
+2 `FAIL — NOT IMPLEMENTED`**; the two missing items are the undocumented `/api/reports` contract
+shape (R-5) and a vendor-scoped audit trail (A-19), both documented limitations rather than
+regressions. Every notification check now passes, including B-1 (the bell is present and opens the
+dialog). The nested notification harness records **49 passed, 0 failed**: RFQ publication,
+quotation submission, approval request, approval/rejection decision, PO, invoice and email events,
+correct recipients, actor exclusion, vendor scoping, cross-user `404`, mark-read/mark-all-read and
+persistence. Rejection and cancellation recipients are asserted explicitly: the requester and
+winning vendor receive `approval.rejected`, the deciding manager and other reviewers do not; the
+assigned vendor receives `rfq.cancelled`, while the procurement actor and an unassigned vendor do
+not. Full output: [`docs/verification/week4/notifications.txt`](verification/week4/notifications.txt).
+Reports, CSV exports (including the formula-injection guard), audit immutability triggers, PDF,
+print, email delivery (through the explicit local dev outbox), role enforcement and mobile layout
+all passed. Evidence: [`docs/verification/week4-e2e-results.json`](verification/week4-e2e-results.json),
 [`WEEK4_E2E_REPORT.md`](verification/week4/WEEK4_E2E_REPORT.md), CSV exports under
-`docs/verification/week4/exports/` and screenshots under `docs/screenshots/week4/`.
-
-> **Current status of the QA archive.** The 80-check archive above is a historical run from before
-the notification subsystem landed. The current notification evidence is the 38-check output linked
-above; the rest of the Week 4 outcomes remain covered by the archived run, the 227-check API suite
-and the Week 3 browser suite. The archive JSON has not been regenerated because doing so requires a
-disposable loopback PostgreSQL database and its browser fixture.
+`docs/verification/week4/exports/` and the ten current screenshots under `docs/screenshots/week4/`
+(including `01-dashboard-notifications.png` and `10-notification-bell.png`).
 
 ### 8.1 Live deployment verification (2026-10-21)
 
@@ -249,9 +249,9 @@ the writer. New actions populate it from that point onward; the populated UI is 
   recipients exist only where the vendor record is linked to a login account, so imported vendors
   without an account have no bell to notify.
 - **No dedicated Week 4 lifecycle browser suite.** `scripts/e2e-week4.mjs` covers the Week 4
-  screens, CSV, PDF/print/email, roles and persistence through a real browser, but it does not
-  recreate the entire RFQ → approval → invoice lifecycle from scratch; that path is covered by the
-  227-check API suite and the Week 2/3 browser suites.
+  screens, CSV, PDF/print/email, roles and persistence through a real browser, but the lifecycle
+  itself is driven over HTTP; that path is covered by the 227-check API suite, the 49-check
+  notification harness and the Week 2/3 browser suites.
 - **Screenshots use development data**, including the backdated demo chains. They are
   fixtures for review, not operational documents.
 - **Reports have no scheduled delivery or Excel output** — on-demand JSON and three CSV

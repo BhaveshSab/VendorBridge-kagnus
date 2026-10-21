@@ -16,8 +16,11 @@
  *  - Never prints credentials, cookies or tokens.
  *
  * Usage:
- *   DATABASE_URL=postgresql://postgres:password@127.0.0.1:55432/vendorbridge_w4_utf8 \
+ *   DATABASE_URL=postgresql://postgres:password@127.0.0.1:55432/vendorbridge_wk4_e2e_utf8 \
  *   APP_URL=http://localhost:4000 node scripts/e2e-week4.mjs
+ *
+ * The disposable database must be UTF8: on Windows the embedded server's
+ * default WIN1252 encoding rejects the arrow characters used in demo titles.
  */
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
@@ -349,8 +352,8 @@ async function main() {
   }
   check(
     "N-5",
-    "RFQ, quotation, approval, PO and invoice events write notifications",
-    notificationRun.status === 0 && failedNotifications === 0 && passedNotifications >= 30,
+    "RFQ, quotation, approval, rejection, cancellation, PO and invoice events write notifications",
+    notificationRun.status === 0 && failedNotifications === 0 && passedNotifications >= 45,
     `${passedNotifications} passed, ${failedNotifications} failed (scripts/e2e-week4-notifications.mjs)`,
   );
   const notificationPass = (id) => notificationOutput.includes(`[PASS] ${id}`);
@@ -362,9 +365,24 @@ async function main() {
   );
   check(
     "N-7",
-    "Recipients are correct and the actor is excluded",
-    ["N1-4", "N1-5", "N2-3", "N3-4", "N4-3", "N5-3", "N5-4"].every(notificationPass),
-    "actor exclusion and vendor scoping checks",
+    "Recipients are correct and the actor is excluded, including rejected approvals and cancelled RFQs",
+    [
+      "N1-4",
+      "N1-5",
+      "N2-3",
+      "N3-4",
+      "N4-3",
+      "N5-3",
+      "N5-4",
+      "N9-1",
+      "N9-2",
+      "N9-3",
+      "N9-4",
+      "N10-2",
+      "N10-4",
+      "N10-5",
+    ].every(notificationPass),
+    "actor exclusion, rejection and cancellation recipient checks",
   );
   check(
     "N-8",
@@ -449,8 +467,23 @@ async function main() {
     byEntity.status === 200 && (byEntity.body?.items ?? []).every((row) => row.entityType === "purchase_order"),
     `rows=${byEntity.body?.items?.length ?? 0}`,
   );
-  const search = await procurement("GET", `/activity?q=${encodeURIComponent(zenithVendor?.name ?? "Zenith")}&pageSize=10`);
-  check("A-13", "Free-text search finds actor/summary matches", search.status === 200 && (search.body?.items?.length ?? 0) > 0, `${search.body?.items?.length ?? 0} rows`);
+  // Search for an actor that the seeded trail actually contains. Using a vendor
+  // name is unsafe on a fresh database: Zenith is seeded, but no audit event
+  // references it until the integration chain later in this run.
+  const searchTerm = activity.body?.items?.[0]?.actor?.name ?? "Rohan";
+  const search = await procurement("GET", `/activity?q=${encodeURIComponent(searchTerm)}&pageSize=10`);
+  check(
+    "A-13",
+    "Free-text search finds actor/summary matches",
+    search.status === 200 &&
+      (search.body?.items?.length ?? 0) > 0 &&
+      search.body.items.every(
+        (row) =>
+          row.actor?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          row.summary?.toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
+    `${searchTerm}: ${search.body?.items?.length ?? 0} rows`,
+  );
 
   const detail = await procurement("GET", `/activity/${activity.body.items[0].id}`);
   check(
@@ -869,17 +902,32 @@ async function main() {
   await loginViaUi(page, accounts.procurement);
   await page.goto(`${BASE}/dashboard`, { waitUntil: "networkidle0" });
   await settle(page);
-  const hasBell = await page.evaluate(
-    () =>
-      Boolean(document.querySelector('[aria-label*="notification" i], [aria-label*="bell" i], a[href*="notification" i]')) ||
-      /Notifications/i.test(document.body.textContent ?? ""),
-  );
-  if (hasBell) {
-    check("B-1", "Dashboard shows a notification bell with unread count", true);
-  } else {
-    notImplemented("B-1", "Dashboard shows a notification bell with unread count", "No bell, badge or Notifications link on /dashboard.");
+  const bellState = await page.evaluate(() => {
+    const button = document.querySelector('[aria-label="Notifications"]');
+    const badge = button?.querySelector('[aria-label$="unread notifications"]');
+    return { button: Boolean(button), badge: badge?.getAttribute("aria-label") ?? null };
+  });
+  await capture(page, "01-dashboard-notifications.png");
+  let dialogOpened = false;
+  if (bellState.button) {
+    await page.click('[aria-label="Notifications"]');
+    dialogOpened = await page
+      .waitForSelector('[role="dialog"][aria-label="Notifications"]', { timeout: 10000 })
+      .then(() => true)
+      .catch(() => false);
+    if (dialogOpened) {
+      await settle(page, 500);
+      await capture(page, "10-notification-bell.png");
+      await page.keyboard.press("Escape");
+      await settle(page, 250);
+    }
   }
-  await capture(page, "01-dashboard-no-notifications.png");
+  check(
+    "B-1",
+    "Dashboard notification bell opens the notification dialog",
+    bellState.button && dialogOpened,
+    dialogOpened ? `badge ${bellState.badge ?? "none"}` : "bell or dialog missing",
+  );
 
   await page.goto(`${BASE}/reports`, { waitUntil: "networkidle0" });
   await waitForText(page, "Spend by month");
@@ -1103,21 +1151,22 @@ async function writeReport(startedAt) {
       { outcome: "Authentication, vendors, RFQs, quotations, approvals, POs and invoices work together", status: verdictFor(["ENV-3", "ENV-5", "R-20", "R-21", "I-1"]), checks: ["ENV-3", "ENV-5", "R-20", "R-21", "I-1"] },
       { outcome: "Invoice PDF download, printing and email delivery are tested", status: verdictFor(["I-2", "I-3", "I-4", "I-5", "B-8", "B-9"]), checks: ["I-2", "I-3", "I-4", "I-5", "B-8", "B-9"] },
       { outcome: "Data persists and role-based access is enforced", status: verdictFor(["R-23", "I-7", "I-8", "B-10", "A-3"]), checks: ["R-23", "I-7", "I-8", "B-10", "A-3"] },
-      { outcome: "Notification bell, unread count and lifecycle exist", status: verdictFor(["N-1", "N-2", "N-3", "N-4", "N-6"]), checks: ["N-1", "N-2", "N-3", "N-4", "N-6"] },
+      { outcome: "Notification bell, unread count and lifecycle exist", status: verdictFor(["N-1", "N-2", "N-3", "N-4", "N-6", "B-1"]), checks: ["N-1", "N-2", "N-3", "N-4", "N-6", "B-1"] },
+      { outcome: "Rejected approvals and cancelled RFQs notify the right recipients and exclude the actor", status: verdictFor(["N-7"]), checks: ["N-7 (N9-1…N9-4, N10-2…N10-5)"] },
     ],
     traps: [
       { trap: "Analytics rely entirely on arbitrary hardcoded values", verdict: "HUNTED — no hardcoding found", evidence: "R-6/R-8 recompute every figure from PostgreSQL; R-22 creates a real PO and observes the exact delta." },
-      { trap: "Notifications or audit logs are disconnected from application events", verdict: "HUNTED — both are event-driven", evidence: "N-5 runs a disposable RFQ→quotation→approval→PO→invoice chain and proves each notification row comes from the action; N-7 proves recipients and actor exclusion. A-9 proves vendor actions produce audit rows with the real actor." },
-      { trap: "Broken end-to-end workflows or inaccessible deployed features", verdict: "PARTIAL — workflows pass; no deployed URL was verified", evidence: "Baseline 227/227, liveness chain RFQ→quote→approval→PO, PDF/print/email checks. No deployment URL is recorded in this repository run." },
+      { trap: "Notifications or audit logs are disconnected from application events", verdict: "HUNTED — both are event-driven", evidence: "N-5 runs disposable RFQ→quotation→approval→PO→invoice, rejection and cancellation chains and proves each notification row comes from the action; N-7 proves recipients and actor exclusion for approvals (including rejection) and cancellations. A-9 proves vendor actions produce audit rows with the real actor." },
+      { trap: "Broken end-to-end workflows or inaccessible deployed features", verdict: "HUNTED — workflows pass end to end; deployment checked separately", evidence: "Baseline 227/227, liveness chain RFQ→quote→approval→PO, PDF/print/email checks. The live origin is checked separately in docs/WEEK4_COMPLETION_REPORT.md §8.1; this harness itself runs locally." },
       { trap: "Exposed credentials or missing setup documentation", verdict: "HUNTED — none found", evidence: "S-1 bundle scan, S-2/S-3 gitignore checks, README setup sections." },
       { trap: "Final demonstration covers only the UI without functional behaviour", verdict: "HUNTED — this run is HTTP + browser + database", evidence: "Every browser check is paired with an API/DB assertion; CSV, PDF bytes and outbox entries are inspected." },
     ],
     limitations: [
-      "Notification event coverage is delegated to scripts/e2e-week4-notifications.mjs, which is executed here as a nested harness; its 38 checks pass and clean up their own RFQ chain.",
+      "Notification event coverage is delegated to scripts/e2e-week4-notifications.mjs, which is executed here as a nested harness; its 49 checks pass and clean up their own RFQ, rejection and cancellation chains.",
       "The implemented reports contract is `/api/reports/overview`, `/api/reports/vendors` and `/api/reports/export`; the reviewed prompt expects `/api/reports` with `tiles`, `fulfilmentRate` and a `definitions` map, which are absent (R-5).",
       "Vendors are refused the audit trail entirely (403) rather than receiving a scoped subset (A-19).",
       "No process restart was performed in this run; persistence was verified by re-reading through a fresh session and by recomputing from PostgreSQL (R-23).",
-      "No deployed application URL exists in this workspace, so the submission item 'working deployed application URL' is unverified.",
+      "This harness runs against a disposable local cluster. The deployed application at https://vendor-bridge-kagnus.vercel.app is verified separately in docs/WEEK4_COMPLETION_REPORT.md §8.1.",
       "The reviewed prompt names a 190-check baseline; this repository's suite currently has 227 checks (227/227 green at both the opening and closing runs).",
       "The Week 2 (76-check) and Week 3 (106-check) browser suites were not re-run in this session; their last recorded results remain in docs/verification/week2 and docs/verification/week3.",
     ],
