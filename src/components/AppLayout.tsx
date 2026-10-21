@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { NAV_SECTIONS, PROFILE_NAV, type NavItem } from "../lib/constants";
 import { initials } from "../lib/format";
 import { Avatar, cn, IconButton } from "./ui";
+import { NotificationBell } from "./NotificationBell";
 
 function visible(item: NavItem, role: string | undefined) {
   if (!item.roles) return true;
@@ -145,6 +146,7 @@ function Header({ onMenu }: { onMenu: () => void }) {
       </span>
 
       <div className="ml-auto flex items-center gap-2">
+        <NotificationBell />
         <div className="relative" ref={menuRef}>
           <button
             type="button"

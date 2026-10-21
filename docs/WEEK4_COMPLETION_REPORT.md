@@ -16,12 +16,16 @@ Week 4 extends the existing Week 1–3 application (no second app, no mock data)
 | Supplier performance | `GET /api/reports/vendors` | `/reports` |
 | CSV exports | `GET /api/reports/export?type=spend\|purchase-orders\|invoices` | `/reports` (three buttons) |
 | Audit trail | `GET /api/activity`, `GET /api/activity/:id` | `/activity` |
+| Per-user notifications | `GET /api/notifications`, `GET /api/notifications/unread-count`, `POST /api/notifications/:id/read`, `POST /api/notifications/read-all` | bell in the top bar |
 
 New files: `server/audit.js`, `server/routes/reports.js`, `server/routes/activity.js`,
+`server/notify.js`, `server/routes/notifications.js`, `src/components/NotificationBell.tsx`,
+`scripts/e2e-week4-notifications.mjs`,
 `server/services/reports.js`, `src/pages/Reports.tsx`, `src/pages/Activity.tsx`,
-`scripts/seed-week4-demo.mjs`, and four migrations:
+`scripts/seed-week4-demo.mjs`, and five migrations:
 `20261021120000_add_audit_log`, `20261021130000_fix_quotation_cascade`,
-`20261021131000_fix_quotation_item_cascade`, `20261021132000_audit_actor_without_fk`.
+`20261021131000_fix_quotation_item_cascade`, `20261021132000_audit_actor_without_fk`,
+`20261021160000_add_notifications`.
 
 Extended files: `prisma/schema.prisma`, `server/app.js` (route mounting),
 `server/routes/{auth,vendors,rfqs,approvals,purchaseOrders,invoices}.js` (audit writes),
@@ -43,6 +47,11 @@ Extended files: `prisma/schema.prisma`, `server/app.js` (route mounting),
     database, and the migration is a no-op there).
 - **Indexes** — `(created_at DESC, id DESC)` for the feed, `(entity_type, entity_id)` for a
   record's history, `(actor_id)`, `(action)` for facet counts.
+- **notifications** — one row per recipient (`user_id`), event `type`, `title`, `body`, optional
+  `entity_type`/`entity_id`/`link`, optional vendor reference, nullable `read_at` and `created_at`.
+  The user FK cascades; the vendor FK is `SET NULL`, so a removed supplier does not erase the
+  history of a notification. `(user_id, read_at, created_at)` serves the unread badge and
+  `(user_id, created_at)` the inbox.
 - **Quotation cascade reconciliation** — `20261021130000_fix_quotation_cascade` and
   `20261021131000_fix_quotation_item_cascade` align the live database with
   `schema.prisma`: deleting an RFQ or a vendor still removes that RFQ's bids (their line
@@ -104,10 +113,12 @@ documents through the existing PO/invoice endpoints — never aggregate spend.
 | `npm run test:api` | configured PostgreSQL database (Neon `neondb`) via `http://localhost:4000` | **227 passed, 0 failed** |
 | `npm run typecheck` | repo | pass (`tsc -b --pretty false`) |
 | `npm run build` | repo | pass (Vite chunk-size warning only) |
-| `npx prisma migrate status` | configured database | **10 migrations found — Database schema is up to date!** |
+| `npx prisma migrate status` | configured database | **11 migrations found — Database schema is up to date!** |
 | `npm run db:status` | configured database | connection OK; users/vendors/RFQs/quotations/counters/rate limits present |
 | `npm run db:seed-week4` | configured database through the real API | first run created four chains (RFQ-0113…0116); re-run reported all four as *already seeded*, and the overview then read **5 orders · INR 14,80,822 · 5 months** |
-| `npm run db:cleanup-tests` | configured database | removed only 5 `@vendorbridge.test` accounts, 5 test vendors and 13 `[smoke]` RFQs; demo data untouched |
+| `npm run db:cleanup-tests` | configured database | removed only 5 `@vendorbridge.test` accounts, 5 test vendors, 13 `[smoke]` RFQs and 19 test notifications; demo data untouched |
+| `npm run db:deploy` | configured database | applied `20261021160000_add_notifications` |
+| `NOTIFY_E2E_ALLOW_REMOTE=1 npm run test:e2e:notifications` | configured database through `http://localhost:4000` | **38 passed, 0 failed** (events, recipients, actor exclusion, scope, persistence; chain removed afterwards) |
 | `node --check` on new/changed server and script files | repo | pass |
 
 ### What the 227 API checks cover (Week 4 additions)
@@ -181,26 +192,38 @@ and CSV exports are generated on the server without an external service. No cred
 stored in the repository; `.env` is gitignored.
 
 The audit trail also has a documented operational consequence: because rows cannot be
-deleted, `npm run db:cleanup-tests` removes test accounts, vendors and RFQs but leaves the
-audit entries those actions produced. That is intentional — the trail is evidence, not cache.
+deleted, `npm run db:cleanup-tests` removes test accounts, vendors, RFQs and their notifications
+but leaves the audit entries those actions produced. That is intentional — the trail is evidence, not cache.
 
 ## 8. Independent Week 4 QA (2026-10-21)
 
 The separate harness `scripts/e2e-week4.mjs` (80 HTTP, browser and database checks) was run against a
-disposable loopback PostgreSQL database after the 227-check API suite passed. It recorded **69
-passed, 0 failed and 11 `FAIL — NOT IMPLEMENTED`**: every unimplemented outcome belongs to
-**per-user notifications** (no model, endpoint, bell, unread count or mark-read action). Reports,
-CSV exports (including the formula-injection guard), audit immutability triggers, PDF, print,
-email delivery, role enforcement and mobile layout all passed. Evidence:
+disposable loopback PostgreSQL database after the 227-check API suite passed. Its archived run
+predates the notification subsystem and recorded **69 passed, 0 failed and 11 `FAIL — NOT
+IMPLEMENTED`** for the then-missing bell. That section now delegates to
+`scripts/e2e-week4-notifications.mjs`; against the configured database it records **38 passed, 0
+failed**, including the event writers, actor exclusion, vendor scoping, cross-user `404`,
+mark-read/mark-all-read and persistence. Its full output is
+[`docs/verification/week4/notifications.txt`](verification/week4/notifications.txt). Reports, CSV
+exports (including the formula-injection guard), audit immutability triggers, PDF, print, email
+delivery, role enforcement and mobile layout all passed. Re-run `scripts/e2e-week4.mjs` against a
+fresh disposable database to refresh the archived JSON. Evidence:
 [`docs/verification/week4-e2e-results.json`](verification/week4-e2e-results.json),
 [`WEEK4_E2E_REPORT.md`](verification/week4/WEEK4_E2E_REPORT.md), CSV exports under
 `docs/verification/week4/exports/` and screenshots under `docs/screenshots/week4/`.
 
+> **Current status of the QA archive.** The 80-check archive above is a historical run from before
+the notification subsystem landed. The current notification evidence is the 38-check output linked
+above; the rest of the Week 4 outcomes remain covered by the archived run, the 227-check API suite
+and the Week 3 browser suite. The archive JSON has not been regenerated because doing so requires a
+disposable loopback PostgreSQL database and its browser fixture.
+
 ## 9. Known limitations / not verified
 
-- **Notifications are not implemented.** The activity/audit trail records the events, but there is
-  no notification model, API or bell. This is the one Week 4 deliverable that is missing, and the
-  QA harness records it as `FAIL — NOT IMPLEMENTED` rather than hiding it.
+- **Notifications are in-app only.** There is no email, push or realtime channel, no per-type
+  preference screen and no retention job; the bell polls the unread count every 30 seconds. Vendor
+  recipients exist only where the vendor record is linked to a login account, so imported vendors
+  without an account have no bell to notify.
 - **No dedicated Week 4 lifecycle browser suite.** `scripts/e2e-week4.mjs` covers the Week 4
   screens, CSV, PDF/print/email, roles and persistence through a real browser, but it does not
   recreate the entire RFQ → approval → invoice lifecycle from scratch; that path is covered by the

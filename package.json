@@ -25,6 +25,7 @@
     "db:studio": "prisma studio",
     "test:api": "node scripts/smoke-test.mjs",
     "test:e2e:week4": "node scripts/e2e-week4.mjs",
+    "test:e2e:notifications": "node scripts/e2e-week4-notifications.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "typecheck": "tsc -b --pretty false",
     "postinstall": "prisma generate"

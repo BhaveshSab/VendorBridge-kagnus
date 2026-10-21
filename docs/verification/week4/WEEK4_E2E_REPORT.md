@@ -1,5 +1,12 @@
 # Week 4 QA run — notifications, audit, reports and integration
 
+> **Historical run.** This report was produced before the per-user notification subsystem landed;
+> its 11 "not implemented" outcomes are superseded. The current notification coverage is
+> `scripts/e2e-week4-notifications.mjs` (38 passed, 0 failed), with full output in
+> [`notifications.txt`](notifications.txt), and the updated section in
+> `docs/WEEK4_COMPLETION_REPORT.md` §8. Re-run `scripts/e2e-week4.mjs` against a fresh disposable
+> database to regenerate this evidence pack.
+
 Run: 2026-10-20T21:41:13.498Z against http://localhost:4000 (127.0.0.1/vendorbridge_wk4_e2e)
 Totals: **69 passed, 0 failed, 11 not implemented** of 80 checks.
 Baseline API suite: **227 passed, 0 failed**.

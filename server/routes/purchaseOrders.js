@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { recordAudit } from "../audit.js";
+import { notifyUsers } from "../notify.js";
 import { ApiError, currentVendorFor, parse, requireAuth, requireRole } from "../auth.js";
 import { invalidateCache } from "../cache.js";
 import { nextSequence, now, prisma } from "../db.js";
@@ -283,6 +284,20 @@ router.post("/", requireRole(...GENERATE_ROLES), async (req, res) => {
     if (result.created) await invalidateCache("dashboard");
 
     const full = await prisma.purchaseOrder.findUnique({ where: { id: result.purchaseOrder.id }, include: poInclude });
+    if (result.created) {
+      await notifyUsers(
+        [full.vendor?.userId, full.approvalRequest?.requesterId],
+        {
+          type: "purchase_order.generated",
+          title: "Purchase order issued",
+          body: `${full.number} — ${full.rfq.reference} for ${full.total.toFixed(2)} ${full.currency}.`,
+          entityType: "purchase_order",
+          entityId: full.id,
+          vendorId: full.vendorId,
+        },
+        { actorId: req.user.id },
+      );
+    }
     res.status(result.created ? 201 : 200).json({
       purchaseOrder: purchaseOrderOut(full, { revealInternal: true }),
       created: result.created,

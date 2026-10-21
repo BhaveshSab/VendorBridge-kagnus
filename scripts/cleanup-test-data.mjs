@@ -30,6 +30,17 @@ try {
 
   // RFQs created by the Week 2 suite carry this reserved title prefix. Their
   // line items, assignments and quotations are removed by ON DELETE CASCADE.
+  // Notifications have a string entity reference (no FK), so they are removed
+  // explicitly rather than leaving test events in a demo user's bell.
+  const smokeRfqIds = (
+    await prisma.rfq.findMany({ where: { title: { startsWith: "[smoke]" } }, select: { id: true } })
+  ).map((row) => String(row.id));
+  const notifications =
+    smokeRfqIds.length > 0
+      ? await prisma.notification.deleteMany({
+          where: { entityType: "rfq", entityId: { in: smokeRfqIds } },
+        })
+      : { count: 0 };
   const rfqs = await prisma.rfq.deleteMany({ where: { title: { startsWith: "[smoke]" } } });
 
   const vendors = await prisma.vendor.deleteMany({ where: vendorWhere });
@@ -39,7 +50,8 @@ try {
       : { count: 0 };
 
   console.log(
-    `Removed ${users.count} test account(s), ${vendors.count} test vendor record(s) (${TEST_DOMAIN}) and ${rfqs.count} test RFQ(s).`,
+    `Removed ${users.count} test account(s), ${vendors.count} test vendor record(s) (${TEST_DOMAIN}), ` +
+      `${rfqs.count} test RFQ(s) and ${notifications.count} test notification(s).`,
   );
   console.log("Seeded demo users and vendors were not modified.");
 } catch (error) {
