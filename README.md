@@ -86,6 +86,22 @@ In a disposable development database, the server-only seed script creates one ac
 for smoke testing. Credentials are not bundled into the browser login page. Seed accounts are
 fixtures only; never use them in production.
 
+### Live review deployment
+
+The submission build is deployed at <https://vendor-bridge-kagnus.vercel.app> from `main`;
+the notification delivery was merged in `354f1ba`. It uses the seeded demo fixtures below so every
+role can be exercised:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin@vendorbridge.dev` | `Admin@123` |
+| Procurement Officer | `procurement@vendorbridge.dev` | `Procure@123` |
+| Manager / Approver | `manager@vendorbridge.dev` | `Manager@123` |
+| Vendor | `vendor@vendorbridge.dev` | `Vendor@123` |
+
+These are demo identities, not real credentials. Remove or rotate them before using the database
+for anything other than review.
+
 ---
 
 ## 4. Features delivered
@@ -605,6 +621,10 @@ set `CHROME_PATH` if Brave/Chrome is installed elsewhere).
 | [Spend reports](docs/screenshots/33-week4-reports.png) | [Full 12-month report](docs/screenshots/34-week4-reports-trend.png) |
 | [Activity trail](docs/screenshots/35-week4-activity.png) | [Audit entry detail](docs/screenshots/36-week4-audit-detail.png) |
 
+| Notifications (Week 4) | |
+| --- | --- |
+| [Bell with a real quotation event](docs/screenshots/37-week4-notifications.png) | [Deployed bell on the live app](docs/screenshots/week4/10-live-notification-bell.png) |
+
 E2E evidence (validation errors, empty states, expiry, revision, comparison) lives in
 [`docs/verification/week2/`](docs/verification/week2/) — 17 captures plus `results.json` — and the
 Week 3 run in [`docs/verification/week3/`](docs/verification/week3/). The Week 4 QA browser
@@ -700,7 +720,7 @@ and short motion that respects `prefers-reduced-motion`.
 | Vendor data persisted in the database | ✅ PostgreSQL via Prisma |
 | Vendor management restricted to authorized roles | ✅ |
 | README with setup, configuration, run instructions | ✅ this file |
-| Screenshots of authentication, dashboard and vendor management | ✅ 37 screens in `docs/screenshots/` covering Weeks 1–4 |
+| Screenshots of authentication, dashboard, vendors, documents and notifications | ✅ screens in `docs/screenshots/` covering Weeks 1–4 |
 | RFQ → quotation → comparison workflow | ✅ implemented & verified end to end (76-check browser suite, [report](docs/WEEK2_E2E_VERIFICATION.md)) |
 | Week 2 completion report | ✅ [docs/WEEK2_COMPLETION_REPORT.md](docs/WEEK2_COMPLETION_REPORT.md) |
 | Approval → purchase order → invoice workflow | ✅ implemented & verified end to end (106-check browser suite, [report](docs/WEEK3_COMPLETION_REPORT.md)) |
@@ -711,7 +731,8 @@ and short motion that respects `prefers-reduced-motion`.
 | Notification lifecycle evidence | ✅ [38-check output](docs/verification/week4/notifications.txt) — events, recipients, actor exclusion, scope and persistence |
 | Archived full Week 4 QA pack | ⚠️ [results JSON](docs/verification/week4-e2e-results.json), [CSV exports](docs/verification/week4/exports/), [screenshots](docs/screenshots/week4/) — the JSON predates notifications; rerun `node scripts/e2e-week4.mjs` on a disposable database to refresh it |
 | Completion report | ✅ [docs/COMPLETION_REPORT.md](docs/COMPLETION_REPORT.md) — features, commands actually run, audit findings and limitations |
-| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), branch `feat/week4-reports-audit` |
+| Working source code pushed to the assigned GitHub repository | ✅ [BhaveshSab/VendorBridge-kagnus](https://github.com/BhaveshSab/VendorBridge-kagnus), `main` |
+| Working deployed application | ✅ <https://vendor-bridge-kagnus.vercel.app> — deployment verified 21 Oct 2026 |
 | PostgreSQL + Prisma ORM instead of a local database file | ✅ PostgreSQL schema; 227 API checks pass against it |
 
 ### Getting the code

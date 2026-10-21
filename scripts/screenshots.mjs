@@ -171,6 +171,11 @@ try {
 
   const procurement = await openPage(browser, procurementToken);
   await capture(procurement, "/dashboard", "04-dashboard.png");
+  await procurement.click('button[aria-label="Notifications"]');
+  await procurement.waitForSelector('[role="dialog"]', { timeout: 8000 });
+  await settle(procurement, 500);
+  await shot(procurement, "37-week4-notifications.png");
+  await procurement.keyboard.press("Escape").catch(() => {});
   await capture(procurement, "/vendors", "05-vendors.png");
 
   await procurement.goto(`${BASE}/vendors?new=1`, { waitUntil: "networkidle0", timeout: 45000 });

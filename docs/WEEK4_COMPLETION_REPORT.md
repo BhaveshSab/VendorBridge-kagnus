@@ -178,6 +178,8 @@ Screenshots (synthetic data only):
 | `docs/screenshots/34-week4-reports-trend.png` | 12-month period with the full trend and supplier performance table |
 | `docs/screenshots/35-week4-activity.png` | Activity trail with filters, facets and action chips |
 | `docs/screenshots/36-week4-audit-detail.png` | Audit entry drawer with metadata and the record's other events |
+| `docs/screenshots/37-week4-notifications.png` | Bell opened on a real quotation event, with the unread badge |
+| `docs/screenshots/week4/10-live-notification-bell.png` | The deployed application's notification dialog |
 
 ## 7. Migrations and configuration
 
@@ -217,6 +219,28 @@ the notification subsystem landed. The current notification evidence is the 38-c
 above; the rest of the Week 4 outcomes remain covered by the archived run, the 227-check API suite
 and the Week 3 browser suite. The archive JSON has not been regenerated because doing so requires a
 disposable loopback PostgreSQL database and its browser fixture.
+
+### 8.1 Live deployment verification (2026-10-21)
+
+The notification work is merged into `main` at `354f1ba` and deployed at
+<https://vendor-bridge-kagnus.vercel.app>. Read-only checks against that origin returned:
+
+| Check | Result |
+| --- | --- |
+| `GET /api/health` | `200`, database connected |
+| Anonymous `GET /api/notifications` and `/unread-count` | `401` |
+| Procurement and vendor `GET /api/notifications` | `200`, session-scoped `items/total/unread` payload |
+| Vendor `GET /api/reports/overview` and `/api/activity` | `403` |
+| Vendor `POST /api/notifications/999999/read` | `404` |
+| Bell in the deployed top bar | Opens the All/Unread dialog |
+| Spend overview | `200` — 5 issued POs, INR 14,80,822, 12 months, 5 categories |
+| CSV export | `200`, `text/csv`, BOM, CRLF, 9 data rows |
+| Invoice PDF | `200`, `application/pdf`, `%PDF-` signature |
+| Activity feed | `200`, non-empty with actor and timestamp |
+
+The live notification table was empty immediately after deployment because earlier actions predate
+the writer. New actions populate it from that point onward; the populated UI is captured in
+`docs/screenshots/37-week4-notifications.png` using a real local quotation event.
 
 ## 9. Known limitations / not verified
 

@@ -1,145 +1,190 @@
-# VendorBridge — Week 1 Completion Report
+# VendorBridge — Weeks 1–4 Completion Report
 
-**Project:** VendorBridge — Procurement & Vendor Management ERP
-**Milestone:** Week 1 — Foundation & Vendor Management
-**Branch:** `arena/90eb331b-vendorbridge-kagnus`
-**Verified:** 19 October 2026
-**Environment:** Windows 11 · Node.js v24.13.0 · PostgreSQL (managed Neon development database) · Chrome at 1440×900 and 390×844
+Final submission report for the Kagnus procurement platform. This report describes the code
+that is deployed from `main`, the checks that were actually run, and the limitations that remain.
 
-**Status:** Every Week 1 acceptance criterion was exercised against the live database, the running API
-and a real browser in this workspace. No fabricated data paths were found, three defects were fixed
-during verification, and the remaining limitations are listed in §5.
+- **Live application:** <https://vendor-bridge-kagnus.vercel.app>
+- **Notification delivery merged:** `354f1ba` on `main`
+- **Database:** managed PostgreSQL (Neon) through Prisma
+- **Last live verification:** 21 October 2026, 09:40 UTC
 
 ---
 
-## 1. Implemented features
+## 1. Delivered application
 
-### Authentication and authorization
-- Public registration is backend-forced to the **Vendor** role and creates a linked **Pending** vendor profile; the form shows the account type as a read-only field.
-- Sign-in, sign-out and session restoration use a signed JWT in an `httpOnly`, `sameSite=lax` cookie. The JWT is never returned in JSON.
-- Password recovery issues single-use, 30-minute reset tokens. Delivery uses Resend when `RESEND_API_KEY` is set, otherwise a local mail outbox (`.mail-outbox.jsonl`).
-- The development reset-token helper (`/api/auth/dev-reset-link`) is now **disabled by default** and only works when `ALLOW_DEV_RESET_LINK=true` and `NODE_ENV` is not `production`; the sign-in UI asks `/api/auth/capabilities` before rendering it.
-- Login throttling (10 attempts per IP + email per 15 minutes) uses Redis when `REDIS_URL` is set, otherwise the `rate_limits` table, so counters survive restarts.
-- Protected UI routes redirect anonymous visitors to `/login`; every API route is guarded server-side.
+VendorBridge is one full-stack application: a React single-page front end, an Express API and a
+PostgreSQL database. It covers the complete procurement lifecycle rather than a collection of
+disconnected screens.
 
-### Dashboard
-- `/api/dashboard` reads live PostgreSQL data through Prisma: `totalVendors`, `statusCounts`, `categoryCounts` and the five most recently updated vendors for internal roles.
-- Vendor accounts receive only their own profile and scoped metrics — no global totals, no recent-vendor list and no internal notes.
-- The dashboard renders Total suppliers, the status donut, category bars and the recent-supplier snapshot from that response, with loading skeletons, an error state with retry, and roadmap placeholders for RFQs, approvals/orders and reports.
-- Authenticated API responses carry `Cache-Control: no-store`.
+| Area | Delivered |
+| --- | --- |
+| Authentication | Registration, login, logout, session restore, forgotten-password reset, persistent rate limits |
+| Vendor management | CRUD, search, status/category filters, pagination, vendor-scoped reads and redacted internal notes |
+| RFQs and quotations | Draft → open → closed/cancelled lifecycle, assigned-vendor visibility, server-computed quotations, revisions and side-by-side comparison |
+| Approvals | Manager/Admin review queue, requester/decision separation, immutable decision events and rejection remarks |
+| Purchase orders | Generated only from approved quotations, vendor-scoped documents and cancellation with a reason |
+| Invoices | Generated from purchase orders, server-rendered PDF, print view, Resend delivery with persisted sent/failed/not-configured status |
+| Reports | Spend overview, monthly trend, category split, supplier performance and three CSV exports, all aggregated from stored documents |
+| Activity | Append-only audit trail with actor snapshot, timestamp, IP/user agent, filters and record history |
+| Notifications | Persistent per-user inbox with unread count, event writers, deep links, mark-one-read and mark-all-read |
+| Access control | Server-enforced Admin/Procurement/Manager/Vendor permissions; vendors see only their own records |
 
-### Vendor management
-- Authorized staff can create, view, update, delete, search, filter by status/category, sort and paginate supplier records.
-- Vendors can read only their own profile; global metadata and internal procurement notes are withheld from vendor sessions.
-- Server-side validation (Zod) and duplicate-name protection are enforced; client-side validation surfaces per-field messages.
+### Notifications are event-driven
 
-### Scripts added during verification
-- `scripts/cleanup-test-data.mjs` (`npm run db:cleanup-tests`) removes only `@vendorbridge.test` accounts and vendors created by the suites — never seeded or real records.
+`server/notify.js` is called by the route that performs the action, after the business transaction
+commits. The event set is:
+
+- `rfq.published`, `rfq.closed`, `rfq.cancelled` → assigned vendors
+- `quotation.submitted`, `quotation.revised` → RFQ creator
+- `approval.requested` → Admin and Manager reviewers
+- `approval.approved`, `approval.rejected` → requester and winning vendor
+- `purchase_order.generated` → vendor and requester
+- `invoice.generated` → vendor
+- `invoice.email_sent`, `invoice.email_failed`, `invoice.email_not_configured` → procurement team and requester
+
+The actor is excluded from their own notification, duplicate recipients are collapsed, and vendors
+without a linked login are skipped. Notifications are written best-effort: a failed insert is
+logged and never rolls back the document action.
+
+### Analytics are computed, not hardcoded
+
+`server/services/reports.js` aggregates issued purchase orders and invoices in SQL from `DECIMAL`
+columns. The monthly series, category shares, supplier performance, win rates and cycle-time
+metrics all come from stored rows; the browser only formats the values. Multi-currency periods
+report the dominant currency and disclose orders in other currencies instead of summing unlike
+amounts.
 
 ---
 
-## 2. Verification actually performed
+## 2. Live deployment verification
 
-### Commands
-
-| Check | Command | Result |
-| --- | --- | --- |
-| Database connectivity and row counts | `npm run db:status` | **Pass** — connection OK, counts printed without record contents |
-| Prisma migrations current | `npm run db:deploy` | **Pass** — both migrations applied (`init`, `add_rate_limits`) |
-| TypeScript | `npm run typecheck` | **Pass**, exit 0 |
-| Production build | `npm run build` | **Pass**, exit 0 (only the >500 kB chunk-size warning) |
-| API end-to-end suite | `npm run test:api` | **Pass — 78 passed, 0 failed** (exit 0) against the live database |
-| Whitespace/conflict check | `git diff --check` | **Pass** |
-| JavaScript syntax | `node --check` on `server/**/*.js` and `scripts/*.js|mjs` | **Pass** |
-| Dependency audit | `npm audit --omit=dev` | **Reported, not remediated** — 3 high findings in Prisma CLI tooling (`deepmerge-ts`); fix requires Prisma 7 (breaking), not applied without approval |
-| Screenshot capture | `npm run screenshots` | **Pass** — all 9 captures regenerated from the running app |
-
-### HTTP contract
+The checks below were run against the deployed URL, not a local build:
 
 | Check | Result |
 | --- | --- |
-| `GET /api/health` | 200, `"database":"connected"`, body limited to `ok`, `service`, `database`, `time` (no row counts) |
-| Anonymous `/api/dashboard`, `/api/vendors`, `/api/auth/me` | 401 |
-| Login response | 200; `Set-Cookie` is `HttpOnly` + `SameSite=Lax`; no token, JWT or password hash in JSON |
-| Cookie replay (`/api/auth/me`) | 200 — session restored from the cookie alone |
-| Authenticated `/api/dashboard` | 200 JSON, `Cache-Control: no-store`, keys `scope, statusCounts, categoryCounts, totalVendors, recentVendors` |
-| Dashboard reconciliation | 16 suppliers = 12 active + 2 pending + 1 inactive + 1 blocked; category counts sum to 16; `recentVendors` limited to 5 |
-| Vendor `/api/dashboard` | `scope: "vendor"`, no `recentVendors`, `hasVendorProfile: true`, metrics scoped to the caller |
-| Vendor `/api/vendors` | 1 item (own record), no internal notes in the payload |
-| Vendor `/api/vendors/meta` | 403 |
-| Vendor reading another vendor | 403 |
-| Manager/Admin create/delete vendor | Manager 403; Admin/Procurement allowed |
-| Forged privileged role on registration | 201 created as `vendor` |
-| `/api/auth/capabilities` | 200 `{ "devResetLink": false }` |
-| `GET /api/auth/dev-reset-link` (flag off) | 404 — no token issued |
-| Out-of-scope endpoints (`/rfqs`, `/quotations`, `/approvals`, `/purchase-orders`, `/invoices`, `/reports`, `/activity`) | 404, asserted by the suite |
+| `GET /api/health` | `200` — `{"ok":true,"service":"vendorbridge-api","database":"connected"}` |
+| Anonymous `GET /api/notifications`, `/unread-count` | `401` |
+| Procurement and vendor `GET /api/notifications` | `200`, session-scoped payload with `items`, `total`, `unread` |
+| Vendor `GET /api/reports/overview` and `/api/activity` | `403` |
+| Vendor `POST /api/notifications/999999/read` | `404` |
+| Dashboard notification bell | Present; opens the All/Unread dialog and empty state |
+| Spend overview | `200` — 5 issued POs, INR 14,80,822, 12 monthly buckets, 5 categories, 5 top suppliers |
+| CSV export | `200`, `text/csv`, UTF-8 BOM, CRLF, 9 data rows |
+| Invoice PDF | `200`, `application/pdf`, `INV-0001.pdf`, `%PDF-` signature |
+| Activity feed | `200`, non-empty, actor and timestamp present |
 
-### Browser walkthrough (real Chrome, live stack)
-
-Desktop (1440×900):
-- Login as admin and procurement; dashboard shows Total suppliers 16, donut 12/2/1/1, category bars and the five most recent vendors from the API.
-- Vendor register: 16 records, 8 per page, 2 pages; search `Nova` returns exactly 1 record; status filter `Pending` returns exactly the 2 pending vendors; sort `Name A–Z` reorders correctly; paging shows `9–16 of 16`.
-- Created "E2E Verification Co" through the form → toast, total 17, row present; edited rating to 4.5 and status to Active → row and status cards updated (Active 13); deleted it through the confirmation dialog → toast, total back to 16.
-- Validation: submitting `x` / `not-an-email` / `1` kept the dialog open and showed three inline field errors with `aria-invalid` set.
-- Persistence: a vendor created independently of the UI appeared after a full page reload (`17` total, `3` pending) and was deleted through the UI.
-- Empty state: after deleting, a no-match search showed "No suppliers match those filters" instead of stale rows.
-- Registration: new self-service account landed on a scoped vendor dashboard showing only its own Pending profile (`MY SUPPLIER PROFILE 1`, 100% pending), with no global totals.
-- Logout: session cleared, redirected to `/login`; visiting `/vendors` while signed out redirected to `/login`.
-- Forgot password: generic "Check your inbox" confirmation with **no** reset link or token in the DOM (dev helper disabled), while the message was delivered to the server-side mail outbox.
-
-Mobile (390×844):
-- Hamburger navigation opens the "Navigation menu" dialog; dashboard cards stack; the recent-vendor table drops to the two essential columns; quick actions wrap without overflow.
-
-Screenshots in `docs/screenshots/` were regenerated against this build (login, register, forgot password, dashboard, vendor register, add-vendor form, vendor detail, profile, vendor dashboard). They contain seeded demo business data only — no passwords, cookies, tokens or environment values.
+The live notification table was empty at the time of the check. That is expected after deploying
+the migration: historical actions predate the notification writer, and new actions populate the
+bell from that point forward. The populated bell is demonstrated with a real local event in
+[`docs/screenshots/37-week4-notifications.png`](screenshots/37-week4-notifications.png).
 
 ---
 
-## 3. Defects found and fixed during verification
+## 3. Checks run
 
-| # | Defect | Fix |
-| --- | --- | --- |
-| 1 | **"Total vendors" card showed the filtered count.** With a search active it read `1` while the status cards still showed register-wide totals (13/2/2). | Total is derived from the register-wide status counts (vendor sessions keep their own single record). Verified: total stays 16 under an active search. |
-| 2 | **Development reset-token endpoint was open by default.** Any unauthenticated caller could obtain a live reset token for any email whenever `NODE_ENV` was not `production`. | Endpoint now requires `ALLOW_DEV_RESET_LINK=true` and a non-production environment; new `/api/auth/capabilities` lets the UI hide its dev panels; both `/forgot-password` and `/reset-password` respect it. Documented in `.env.example`. |
-| 3 | **Misleading startup warning** — the API logged "Unable to connect to remote database" because the embedded-Postgres probe ran against the managed host before Prisma connected. | Remote hosts skip the local probe entirely; startup log is now clean. |
-
-Housekeeping in the same branch: stale "73 assertions" documentation corrected to 78, test data
-cleanup script added, and the unused `.agents/` skill documentation (4.8 MB, including committed
-`__pycache__` binaries) removed from the repository.
-
----
-
-## 4. Security notes
-
-- `.env` remains gitignored and was never staged; no connection string, JWT secret, password, cookie or reset token appears in this report, the README, screenshots or commit contents.
-- Test accounts are created only under the reserved `@vendorbridge.test` domain and were removed with `npm run db:cleanup-tests` before the final commit; the database is back to the 4 seeded users and 16 seeded vendors.
-- Seeding is explicit, refuses to overwrite non-empty tables, is blocked in production, and destructive reseeding requires `ALLOW_DESTRUCTIVE_SEED=true`.
-- Passwords are bcrypt hashes; sessions are signed JWTs in httpOnly cookies; reset tokens are single-use and expire after 30 minutes; auth endpoints are rate-limited persistently.
-- The Neon role password for the development database has been exposed outside the repository (shared in chat during setup). Rotate it in the provider console; only the local `.env` needs updating.
-
----
-
-## 5. Known limitations and work not run
-
-| Item | Status |
+| Check | Result |
 | --- | --- |
-| Automated UI test suite | **Not written.** UI verification was a manual browser walkthrough (documented in §2); the API suite is the automated regression net. |
-| Deployed preview / hosted URL | **Not available.** No deployment target is provisioned in this environment; the app runs locally via `npm run dev` or `npm start`. |
-| Prisma dependency audit | **Open.** 3 high findings (`deepmerge-ts` via Prisma CLI). Remediation requires a Prisma 7 major upgrade, which needs approval and a migration pass. |
-| Neon idle connection resets | Observed twice during the walkthrough: the first request after an idle drop returned 503 `database_unavailable` with a clear message; retrying the same action succeeded. Not a data-integrity issue, but the UI has no automatic retry. |
-| Weeks 2–4 modules | **Intentionally out of scope.** RFQ, quotation, approval, purchase-order, invoice, report and audit routes return 404 and the dashboard labels them as roadmap items rather than faking numbers. |
-| CI pipeline | **None.** All checks in §2 were run manually in this workspace. |
-| Seed accounts in production | Demo fixtures exist only in the server-side seed script and must not be loaded into production. |
+| `npm run test:e2e:notifications` | **38 passed, 0 failed** — full output in [`docs/verification/week4/notifications.txt`](verification/week4/notifications.txt) |
+| `npm run test:api` | **227 passed, 0 failed** |
+| `npm run typecheck` | pass |
+| `npm run build` | pass (one Vite chunk-size warning) |
+| `prisma validate` | schema valid |
+| `node --check` on changed server and test scripts | pass |
+| `git diff --check` | clean |
+
+The notification suite creates a real RFQ → quotation → approval → purchase order → invoice →
+email-attempt chain, asserts recipients and per-user scope, verifies cross-user `404`, unread
+counts and mark-all-read, then removes the chain. It ran against the configured development
+database with `NOTIFY_E2E_ALLOW_REMOTE=1`; the output records that override.
+
+The Week 2 (76-check) and Week 3 (106-check) browser suites were run in their own sessions and
+their results remain under [`docs/verification/week2/`](verification/week2/) and
+[`docs/verification/week3/`](verification/week3/). They were not re-run during this deployment
+check.
+
+The 80-check Week 4 browser harness has not been re-run against a disposable local database after
+the notification work. Its archived JSON still contains the 11 notification checks from before the
+subsystem existed, and is labelled as historical. The notification portion is now delegated to
+the 38-check suite; the remaining report/audit/PDF/email browser checks are covered by the archive
+and the live checks above.
 
 ---
 
-## 6. Submission artefacts
+## 4. Security and access
 
-| Artefact | Location / status |
+- Every API route is guarded by `requireAuth` or `requireRole`; hiding UI is never the only control.
+- Notification queries use `req.user.id`; there is no endpoint that accepts another user's id, and
+  another user's row is reported as `404`.
+- Vendors cannot read the aggregate spend reports or the audit trail (`403`).
+- The audit trail is append-only at the database level. Both a raw `UPDATE` and a raw `DELETE` are
+  refused by triggers; the 227-check suite executes both attempts.
+- `.env` is gitignored. The repository contains no database password, JWT secret, session cookie or
+  provider API key.
+- Test data is created under the reserved `@vendorbridge.test` domain and `npm run db:cleanup-tests`
+  removes it, including its notifications. Audit rows intentionally remain because the trail cannot
+  be rewritten.
+
+---
+
+## 5. Submission package
+
+| Artefact | Location |
 | --- | --- |
-| Source | `src/`, `server/`, `prisma/`, `scripts/` |
-| Setup, API and configuration guide | [README.md](../README.md) |
-| API test suite | `scripts/smoke-test.mjs` — 78 assertions, executed |
-| Test-data cleanup | `scripts/cleanup-test-data.mjs` (`npm run db:cleanup-tests`) |
-| Database status utility | `scripts/db-status.js` |
-| Screenshots | `docs/screenshots/` — 9 captures regenerated 19 Oct 2026 |
-| Branch | `arena/90eb331b-vendorbridge-kagnus` (pushed; commit hash in the handover message) |
+| Source repository | <https://github.com/BhaveshSab/VendorBridge-kagnus> (`main`) |
+| Setup, configuration and API documentation | [`README.md`](../README.md) |
+| Week 2 report | [`docs/WEEK2_COMPLETION_REPORT.md`](WEEK2_COMPLETION_REPORT.md) |
+| Week 3 report | [`docs/WEEK3_COMPLETION_REPORT.md`](WEEK3_COMPLETION_REPORT.md) |
+| Week 4 report | [`docs/WEEK4_COMPLETION_REPORT.md`](WEEK4_COMPLETION_REPORT.md) |
+| Notification lifecycle evidence | [`docs/verification/week4/notifications.txt`](verification/week4/notifications.txt) |
+| Lifecycle, reports and notification screenshots | [`docs/screenshots/`](screenshots/) |
+| Historical Week 4 QA archive | [`docs/verification/week4/WEEK4_E2E_REPORT.md`](verification/week4/WEEK4_E2E_REPORT.md) |
+
+---
+
+## 6. Known limitations
+
+- Notifications are in-app only. There is no email, push or realtime channel, no per-type
+  preferences, and no retention job.
+- Vendor recipients exist only where a vendor record has a linked login account; imported vendors
+  without an account have no bell to notify.
+- The notification tests exercise publish, quotation, approval-request, approval-approval, PO,
+  invoice and email events. Rejection, RFQ close/cancel and quotation revision use the same writers
+  but are not separately asserted by the focused suite.
+- The full 80-check Week 4 browser harness and its JSON archive have not been regenerated because
+  they require a disposable loopback PostgreSQL database and browser fixture. The report and JSON
+  are marked historical, and the fresh 38-check notification output is the current evidence.
+- The Week 2/3 browser suites were not re-run during this deployment check; their last recorded
+  results are preserved in their evidence directories.
+- There is no CI pipeline; all checks are run manually in the workspace.
+- `npm audit --omit=dev` still reports the Prisma CLI `deepmerge-ts` advisory. Remediation requires
+  a Prisma 7 major upgrade and was not applied without approval.
+- Neon occasionally drops an idle connection; the API returns an explicit `503 database_unavailable`
+  and the action succeeds on retry. There is no automatic client retry.
+- Demo accounts and demo data exist in the deployed database so a reviewer can exercise the
+  workflow. They are fixtures, not production identities, and must be removed or rotated before any
+  real use.
+
+---
+
+## 7. Reproduce locally
+
+```bash
+git clone https://github.com/BhaveshSab/VendorBridge-kagnus.git
+cd VendorBridge-kagnus
+npm install
+cp .env.example .env             # set DATABASE_URL and JWT_SECRET
+npm run db:setup                # generate client, apply migrations, seed an empty DB
+npm run dev                     # API :4000, Vite :5173
+```
+
+Useful checks:
+
+```bash
+npm run test:api
+npm run test:e2e:notifications   # app running
+npm run typecheck
+npm run build
+```
+
+For a disposable local database, start PostgreSQL and point `DATABASE_URL` at a database whose
+name contains `e2e`; the browser harnesses refuse to write to a non-disposable database.
